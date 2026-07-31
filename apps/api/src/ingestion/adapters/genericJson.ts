@@ -1,5 +1,6 @@
 import { workUnitSchema, type WorkUnit } from "@quorum/schema";
 import { ZodError } from "zod";
+import { normalizeWorkUnit } from "../normalize.js";
 
 export class ValidationError extends Error {
   constructor(
@@ -23,7 +24,7 @@ export function genericJsonAdapter(raw: unknown): WorkUnit[] {
 
   for (let i = 0; i < raw.length; i++) {
     try {
-      units.push(workUnitSchema.parse(raw[i]) as WorkUnit);
+      units.push(workUnitSchema.parse(normalizeWorkUnit(raw[i])) as WorkUnit);
     } catch (err) {
       if (err instanceof ZodError) {
         for (const issue of err.issues) {

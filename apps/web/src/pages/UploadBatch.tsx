@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { batchIngestSchema, type BatchIngestInput } from "@quorum/schema";
 import { api, ApiError } from "../api/client.js";
+
+type RawUnit = Record<string, unknown>;
 
 export function UploadBatch() {
   const navigate = useNavigate();
@@ -10,10 +11,10 @@ export function UploadBatch() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
-  const [pendingUnits, setPendingUnits] = useState<BatchIngestInput | null>(null);
+  const [pendingUnits, setPendingUnits] = useState<RawUnit[] | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  async function submit(units: BatchIngestInput) {
+  async function submit(units: RawUnit[]) {
     setSubmitting(true);
     setError(null);
     setDuplicateError(null);
@@ -47,19 +48,26 @@ export function UploadBatch() {
       return;
     }
 
-    const result = batchIngestSchema.safeParse(parsed);
-    if (!result.success) {
-      setIssues(result.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`));
+    // Only a light structural check here — the server does the real validation and is tolerant
+    // of common shape variations (free-form domain labels, rubric items as plain strings, missing
+    // reasoning/timestamps get sensible defaults). No point rejecting client-side something the
+    // server would happily accept.
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      setIssues(["File must be a JSON array with at least one work unit."]);
+      return;
+    }
+    if (!parsed.every((u) => u && typeof u === "object")) {
+      setIssues(["Every item in the array must be an object."]);
       return;
     }
 
-    await submit(result.data);
+    await submit(parsed as RawUnit[]);
   }
 
   function retryWithUniqueIds() {
     if (!pendingUnits) return;
     const suffix = Date.now().toString(36);
-    void submit(pendingUnits.map((u) => ({ ...u, id: `${u.id}-${suffix}` })));
+    void submit(pendingUnits.map((u) => ({ ...u, id: `${String(u.id)}-${suffix}` })));
   }
 
   const codeClass = "text-xs bg-gray-100 px-1 py-0.5 rounded";
@@ -68,13 +76,15 @@ export function UploadBatch() {
     <div className="p-8 max-w-2xl">
       <h1 className="animate-fade-up text-2xl font-bold text-gray-900 mb-2">Upload Your Data</h1>
       <p className="animate-fade-up text-sm text-gray-500 mb-6">
-        Upload a JSON array of work units to grade. Each item needs <code className={codeClass}>id</code>,{" "}
-        <code className={codeClass}>domain</code>, <code className={codeClass}>task</code>,{" "}
-        <code className={codeClass}>rubric</code>, <code className={codeClass}>modelOutput</code>,{" "}
-        <code className={codeClass}>grade</code> and <code className={codeClass}>graderId</code>. The{" "}
-        <code className={codeClass}>tenantId</code>/<code className={codeClass}>batchId</code> fields are ignored
-        server-side — any non-empty placeholder works. Work unit <code className={codeClass}>id</code>s must be
-        unique across every upload you've ever made.
+        Upload a JSON array of work units to grade. Each item needs a{" "}
+        <code className={codeClass}>task</code>, <code className={codeClass}>rubric</code>,{" "}
+        <code className={codeClass}>modelOutput</code>, <code className={codeClass}>grade</code> and{" "}
+        <code className={codeClass}>graderId</code> — everything else is flexible. Rubric criteria can be
+        plain strings or objects with a few different field name conventions,{" "}
+        <code className={codeClass}>domain</code> can be any label (we'll bucket it), and missing{" "}
+        <code className={codeClass}>reasoning</code>/<code className={codeClass}>createdAt</code>/
+        <code className={codeClass}>id</code> get sensible defaults. Work unit{" "}
+        <code className={codeClass}>id</code>s must be unique across every upload you've ever made.
       </p>
 
       <label
