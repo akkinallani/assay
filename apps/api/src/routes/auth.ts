@@ -2,16 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import type { Redis } from "ioredis";
 import bcrypt from "bcryptjs";
 import { loginSchema, signupSchema } from "@quorum/schema";
-import { createSession, destroySession, SESSION_COOKIE, SESSION_TTL_MS } from "../lib/session.js";
+import { createSession, destroySession, setSessionCookie, SESSION_COOKIE } from "../lib/session.js";
 import { badRequest, conflict, tooManyRequests, unauthorized } from "../errors.js";
-
-const COOKIE_OPTS = {
-  httpOnly: true,
-  signed: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-};
 
 const LOGIN_FAIL_LIMIT = 5;
 const LOGIN_FAIL_WINDOW_SECONDS = 15 * 60;
@@ -43,7 +35,7 @@ export default function authRoutes(redis: Redis): FastifyPluginAsync {
         });
 
         const session = await createSession(fastify.prisma, user.id);
-        reply.setCookie(SESSION_COOKIE, session.id, { ...COOKIE_OPTS, maxAge: SESSION_TTL_MS / 1000 });
+        setSessionCookie(reply, session.id);
 
         return reply
           .code(201)
@@ -68,19 +60,22 @@ export default function authRoutes(redis: Redis): FastifyPluginAsync {
         }
 
         const user = await fastify.prisma.user.findUnique({ where: { email }, include: { tenant: true } });
-        if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+        if (!user || !user.passwordHash || !(await bcrypt.compare(password, user.passwordHash))) {
           await redis
             .multi()
             .incr(failKey)
             .expire(failKey, LOGIN_FAIL_WINDOW_SECONDS)
             .exec();
+          if (user && !user.passwordHash) {
+            throw unauthorized("This account uses Google sign-in — use the Google button instead");
+          }
           throw unauthorized("Invalid email or password");
         }
 
         await redis.del(failKey);
 
         const session = await createSession(fastify.prisma, user.id);
-        reply.setCookie(SESSION_COOKIE, session.id, { ...COOKIE_OPTS, maxAge: SESSION_TTL_MS / 1000 });
+        setSessionCookie(reply, session.id);
 
         return reply.send({ id: user.id, email: user.email, tenantId: user.tenantId, tenantName: user.tenant.name });
       }

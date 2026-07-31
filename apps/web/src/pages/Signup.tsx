@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
 import { ApiError } from "../api/client.js";
+import { GoogleIcon } from "../components/GoogleIcon.js";
 
 export function Signup() {
   const { signup } = useAuth();
@@ -31,6 +32,20 @@ export function Signup() {
       <div className="animate-fade-up w-full max-w-sm bg-white rounded-lg border border-gray-200 shadow-card p-6">
         <h1 className="text-xl font-bold text-gray-900 mb-1">Create your account</h1>
         <p className="text-sm text-gray-500 mb-6">Sets up a new organization on Quorum.</p>
+
+        <a
+          href="/api/auth/google"
+          className="pressable flex items-center justify-center gap-2 w-full py-2 rounded-md border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors duration-150 ease-out"
+        >
+          <GoogleIcon />
+          Continue with Google
+        </a>
+
+        <div className="flex items-center gap-3 my-4">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs text-gray-400">or</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

@@ -2,18 +2,10 @@ import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import bcrypt from "bcryptjs";
 import { acceptInviteSchema, inviteTeammateSchema } from "@quorum/schema";
-import { createSession, SESSION_COOKIE, SESSION_TTL_MS } from "../lib/session.js";
+import { createSession, setSessionCookie } from "../lib/session.js";
 import { badRequest, conflict, notFound } from "../errors.js";
 
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-const COOKIE_OPTS = {
-  httpOnly: true,
-  signed: true,
-  sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
-  path: "/",
-};
 
 const invitesRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post("/invites", async (request, reply) => {
@@ -95,7 +87,7 @@ const invitesRoutes: FastifyPluginAsync = async (fastify) => {
     });
 
     const session = await createSession(fastify.prisma, user.id);
-    reply.setCookie(SESSION_COOKIE, session.id, { ...COOKIE_OPTS, maxAge: SESSION_TTL_MS / 1000 });
+    setSessionCookie(reply, session.id);
 
     return reply
       .code(201)

@@ -7,6 +7,7 @@ import prismaPlugin from "./plugins/prisma.js";
 import authPlugin from "./plugins/auth.js";
 import healthRoute from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
+import googleOAuthPlugin from "./plugins/googleOAuth.js";
 import invitesRoutes from "./routes/invites.js";
 import batchRoutes from "./routes/batches.js";
 import graderRoutes from "./routes/graders.js";
@@ -44,6 +45,7 @@ export function buildApp(redis: Redis) {
   fastify.register(authPlugin);
   fastify.register(healthRoute);
   fastify.register(authRoutes(redis));
+  fastify.register(googleOAuthPlugin);
   fastify.register(invitesRoutes);
   fastify.register(batchRoutes(redis));
   fastify.register(graderRoutes);

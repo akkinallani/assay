@@ -16,6 +16,8 @@ export const PUBLIC_ROUTES = new Set([
   "/health",
   "/auth/signup",
   "/auth/login",
+  "/auth/google",
+  "/auth/google/callback",
   "/invites/:token/accept",
 ]);
 
