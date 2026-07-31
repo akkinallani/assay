@@ -47,7 +47,7 @@ export function VerdictQueue() {
   return (
     <div className="p-8">
       <div className="animate-fade-up flex items-center gap-4 mb-6">
-        <Link to="/" className="pressable inline-block text-quorum-600 hover:underline text-sm">
+        <Link to="/app" className="pressable inline-block text-quorum-600 hover:underline text-sm">
           ← Batches
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">Re-Review Queue</h1>
@@ -64,7 +64,7 @@ export function VerdictQueue() {
         {verdicts.map((v, i) => (
           <Link
             key={v.id}
-            to={`/batches/${batchId}/units/${v.workUnitId}`}
+            to={`/app/batches/${batchId}/units/${v.workUnitId}`}
             className="pressable card-interactive stagger-item block p-4 rounded-lg border border-gray-200 bg-white hover:border-quorum-300"
             style={{ "--stagger-index": i } as CSSProperties}
           >

@@ -56,7 +56,7 @@ export function ItemDetail() {
   return (
     <div className="p-8">
       <div className="animate-fade-up flex items-center gap-4 mb-6">
-        <Link to={`/batches/${batchId}`} className="pressable inline-block text-quorum-600 hover:underline text-sm">
+        <Link to={`/app/batches/${batchId}`} className="pressable inline-block text-quorum-600 hover:underline text-sm">
           ← Queue
         </Link>
         <h1 className="text-xl font-bold text-gray-900">Item Detail</h1>

@@ -12,6 +12,7 @@ model Tenant {
   name      String
   createdAt DateTime @default(now())
   users     User[]
+  invites   Invite[]
 }
 
 model User {
@@ -21,8 +22,25 @@ model User {
   passwordHash String
   createdAt    DateTime  @default(now())
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  sessions Session[]
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  sessions    Session[]
+  sentInvites Invite[]
+
+  @@index([tenantId])
+}
+
+model Invite {
+  id              String    @id @default(cuid())
+  tenantId        String
+  email           String
+  token           String    @unique
+  invitedByUserId String
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  invitedBy User   @relation(fields: [invitedByUserId], references: [id])
 
   @@index([tenantId])
 }

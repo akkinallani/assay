@@ -82,7 +82,7 @@ export function LiveRun() {
   return (
     <div className="p-8">
       <div className="animate-fade-up flex items-center gap-4 mb-6">
-        <Link to="/" className="pressable inline-block text-quorum-600 hover:underline text-sm">
+        <Link to="/app" className="pressable inline-block text-quorum-600 hover:underline text-sm">
           ← Batches
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">Live Run</h1>
@@ -133,7 +133,7 @@ export function LiveRun() {
             <div className="animate-scale-in mb-6 p-4 rounded-lg bg-green-50 border border-green-200 flex items-center justify-between">
               <span className="text-sm text-green-800">Run complete.</span>
               <Link
-                to={`/batches/${batchId}`}
+                to={`/app/batches/${batchId}`}
                 className="pressable inline-block text-sm font-medium text-quorum-600 hover:underline"
               >
                 View full verdict queue →

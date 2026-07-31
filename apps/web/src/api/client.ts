@@ -1,7 +1,9 @@
 import type { GraderScorecard } from "@quorum/schema";
 
 const BASE = "/api";
-const HEADERS = { "Content-Type": "application/json" };
+// X-Requested-With is a CSRF defense-in-depth signal the API requires on every
+// mutating request — a cross-site form/fetch can't set custom headers.
+const HEADERS = { "Content-Type": "application/json", "X-Requested-With": "quorum" };
 
 export interface CurrentUser {
   id: string;
@@ -85,6 +87,20 @@ export interface CreateBatchResult {
   unitCount: number;
 }
 
+export interface TeamMember {
+  id: string;
+  email: string;
+  createdAt: string;
+}
+
+export interface PendingInvite {
+  id: string;
+  email: string;
+  token: string;
+  expiresAt: string;
+  expired: boolean;
+}
+
 export const api = {
   getBatches: () => get<BatchSummary[]>("/batches"),
   getVerdicts: (batchId: string) => get<VerdictRow[]>(`/batches/${batchId}/verdict`),
@@ -97,4 +113,9 @@ export const api = {
   login: (input: { email: string; password: string }) => post<CurrentUser>("/auth/login", input),
   logout: () => post<{ ok: boolean }>("/auth/logout", {}),
   me: () => get<CurrentUser>("/auth/me"),
+  listTeamMembers: () => get<TeamMember[]>("/team/members"),
+  listInvites: () => get<PendingInvite[]>("/invites"),
+  inviteTeammate: (email: string) => post<PendingInvite>("/invites", { email }),
+  acceptInvite: (token: string, password: string) =>
+    post<CurrentUser>(`/invites/${token}/accept`, { password }),
 };

@@ -17,7 +17,7 @@ export function Login() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/");
+      navigate("/app");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong");
     } finally {

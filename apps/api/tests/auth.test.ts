@@ -10,7 +10,12 @@ const app = buildApp(redis);
 const runId = Math.random().toString(36).slice(2);
 const emailA = `auth-test-a-${runId}@example.com`;
 const emailB = `auth-test-b-${runId}@example.com`;
+const emailLockout = `auth-test-lockout-${runId}@example.com`;
 const password = "correct-horse-battery";
+
+// Every mutating request needs this — the API rejects non-GET requests
+// without it as a CSRF defense-in-depth check (apps/api/src/plugins/auth.ts).
+const CSRF_HEADERS = { "x-requested-with": "quorum" };
 
 function sessionCookieFrom(res: { headers: Record<string, unknown> }): string {
   const setCookie = res.headers["set-cookie"];
@@ -19,9 +24,12 @@ function sessionCookieFrom(res: { headers: Record<string, unknown> }): string {
 }
 
 afterAll(async () => {
-  await prisma.session.deleteMany({ where: { user: { email: { in: [emailA, emailB] } } } });
-  await prisma.user.deleteMany({ where: { email: { in: [emailA, emailB] } } });
-  await prisma.tenant.deleteMany({ where: { name: { in: [`Tenant A ${runId}`, `Tenant B ${runId}`] } } });
+  await prisma.session.deleteMany({ where: { user: { email: { in: [emailA, emailB, emailLockout] } } } });
+  await prisma.user.deleteMany({ where: { email: { in: [emailA, emailB, emailLockout] } } });
+  await prisma.tenant.deleteMany({
+    where: { name: { in: [`Tenant A ${runId}`, `Tenant B ${runId}`, `Tenant Lockout ${runId}`] } },
+  });
+  await redis.del(`login-fail:${emailLockout.toLowerCase()}`);
   await app.close();
   await prisma.$disconnect();
   await redis.quit();
@@ -37,10 +45,20 @@ describe("auth", () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it("rejects mutating requests missing the CSRF header", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email: emailA, password },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
   it("signs up, sets a session cookie, and exposes /auth/me", async () => {
     const signup = await app.inject({
       method: "POST",
       url: "/auth/signup",
+      headers: CSRF_HEADERS,
       payload: { email: emailA, password, tenantName: `Tenant A ${runId}` },
     });
     expect(signup.statusCode).toBe(201);
@@ -55,28 +73,67 @@ describe("auth", () => {
     const res = await app.inject({
       method: "POST",
       url: "/auth/signup",
+      headers: CSRF_HEADERS,
       payload: { email: emailA, password, tenantName: `Tenant A dup ${runId}` },
     });
     expect(res.statusCode).toBe(409);
   });
 
   it("logs in with correct credentials and rejects wrong password", async () => {
-    const good = await app.inject({ method: "POST", url: "/auth/login", payload: { email: emailA, password } });
+    const good = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      headers: CSRF_HEADERS,
+      payload: { email: emailA, password },
+    });
     expect(good.statusCode).toBe(200);
 
     const bad = await app.inject({
       method: "POST",
       url: "/auth/login",
+      headers: CSRF_HEADERS,
       payload: { email: emailA, password: "wrong-password" },
     });
     expect(bad.statusCode).toBe(401);
   });
 
+  it("locks out after repeated failed logins", async () => {
+    await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      headers: CSRF_HEADERS,
+      payload: { email: emailLockout, password, tenantName: `Tenant Lockout ${runId}` },
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/auth/login",
+        headers: CSRF_HEADERS,
+        payload: { email: emailLockout, password: "wrong-password" },
+      });
+      expect(res.statusCode).toBe(401);
+    }
+
+    const lockedOut = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      headers: CSRF_HEADERS,
+      payload: { email: emailLockout, password },
+    });
+    expect(lockedOut.statusCode).toBe(429);
+  });
+
   it("logs out and invalidates the session", async () => {
-    const login = await app.inject({ method: "POST", url: "/auth/login", payload: { email: emailA, password } });
+    const login = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      headers: CSRF_HEADERS,
+      payload: { email: emailA, password },
+    });
     const cookie = sessionCookieFrom(login);
 
-    const logout = await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie } });
+    const logout = await app.inject({ method: "POST", url: "/auth/logout", headers: { cookie, ...CSRF_HEADERS } });
     expect(logout.statusCode).toBe(200);
 
     const me = await app.inject({ method: "GET", url: "/auth/me", headers: { cookie } });
@@ -87,6 +144,7 @@ describe("auth", () => {
     const signupA = await app.inject({
       method: "POST",
       url: "/auth/login",
+      headers: CSRF_HEADERS,
       payload: { email: emailA, password },
     });
     const cookieA = sessionCookieFrom(signupA);
@@ -94,6 +152,7 @@ describe("auth", () => {
     const signupB = await app.inject({
       method: "POST",
       url: "/auth/signup",
+      headers: CSRF_HEADERS,
       payload: { email: emailB, password, tenantName: `Tenant B ${runId}` },
     });
     const cookieB = sessionCookieFrom(signupB);
@@ -101,7 +160,7 @@ describe("auth", () => {
     const created = await app.inject({
       method: "POST",
       url: "/batches",
-      headers: { cookie: cookieA },
+      headers: { cookie: cookieA, ...CSRF_HEADERS },
       payload: [
         {
           id: `unit-${runId}`,

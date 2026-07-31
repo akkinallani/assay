@@ -6,6 +6,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, tenantName: string) => Promise<void>;
+  acceptInvite: (token: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -31,6 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     signup: async (email, password, tenantName) => {
       const u = await api.signup({ email, password, tenantName });
+      setUser(u);
+    },
+    acceptInvite: async (token, password) => {
+      const u = await api.acceptInvite(token, password);
       setUser(u);
     },
     logout: async () => {

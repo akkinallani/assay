@@ -19,7 +19,7 @@ export function UploadBatch() {
     setDuplicateError(null);
     try {
       const { batchId } = await api.createBatch(units);
-      navigate(`/batches/${batchId}/live`);
+      navigate(`/app/batches/${batchId}/live`);
     } catch (e) {
       if (e instanceof ApiError && e.code === "duplicate_work_unit_id") {
         setDuplicateError(e.message);

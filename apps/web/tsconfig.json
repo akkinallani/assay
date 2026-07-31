@@ -6,7 +6,8 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "noEmit": true,
-    "paths": {}
+    "paths": {},
+    "types": ["@testing-library/jest-dom"]
   },
   "include": ["src/**/*"]
 }

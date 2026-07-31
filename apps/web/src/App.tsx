@@ -7,6 +7,9 @@ import { UploadBatch } from "./pages/UploadBatch.js";
 import { LiveRun } from "./pages/LiveRun.js";
 import { Login } from "./pages/Login.js";
 import { Signup } from "./pages/Signup.js";
+import { Landing } from "./pages/Landing.js";
+import { Team } from "./pages/Team.js";
+import { AcceptInvite } from "./pages/AcceptInvite.js";
 import { AuthProvider, useAuth } from "./context/AuthContext.js";
 
 const navLinkClass = (isActive: boolean) =>
@@ -32,20 +35,23 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function AppShell() {
   const location = useLocation();
   const { user, logout } = useAuth();
-  const isBatchesActive = location.pathname === "/" || location.pathname.startsWith("/batches");
+  const isBatchesActive = location.pathname === "/app" || location.pathname.startsWith("/app/batches");
 
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white/80 backdrop-blur-sm border-b border-gray-200 px-8 py-3 flex items-center gap-2 sticky top-0 z-10">
         <span className="font-bold text-quorum-700 text-lg mr-4">Quorum</span>
-        <NavLink to="/" className={navLinkClass(isBatchesActive)}>
+        <NavLink to="/app" end className={navLinkClass(isBatchesActive)}>
           Batches
         </NavLink>
-        <NavLink to="/upload" className={({ isActive }) => navLinkClass(isActive)}>
+        <NavLink to="/app/upload" className={({ isActive }) => navLinkClass(isActive)}>
           Upload
         </NavLink>
-        <NavLink to="/scorecards" className={({ isActive }) => navLinkClass(isActive)}>
+        <NavLink to="/app/scorecards" className={({ isActive }) => navLinkClass(isActive)}>
           Scorecards
+        </NavLink>
+        <NavLink to="/app/team" className={({ isActive }) => navLinkClass(isActive)}>
+          Team
         </NavLink>
         {user && (
           <div className="ml-auto flex items-center gap-3">
@@ -62,12 +68,13 @@ function AppShell() {
       </nav>
       <main>
         <Routes>
-          <Route path="/" element={<BatchList />} />
-          <Route path="/upload" element={<UploadBatch />} />
-          <Route path="/batches/:batchId" element={<VerdictQueue />} />
-          <Route path="/batches/:batchId/live" element={<LiveRun />} />
-          <Route path="/batches/:batchId/units/:unitId" element={<ItemDetail />} />
-          <Route path="/scorecards" element={<Scorecard />} />
+          <Route path="/app" element={<BatchList />} />
+          <Route path="/app/upload" element={<UploadBatch />} />
+          <Route path="/app/batches/:batchId" element={<VerdictQueue />} />
+          <Route path="/app/batches/:batchId/live" element={<LiveRun />} />
+          <Route path="/app/batches/:batchId/units/:unitId" element={<ItemDetail />} />
+          <Route path="/app/scorecards" element={<Scorecard />} />
+          <Route path="/app/team" element={<Team />} />
         </Routes>
       </main>
     </div>
@@ -78,10 +85,12 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/invite/:token" element={<AcceptInvite />} />
         <Route
-          path="/*"
+          path="/app/*"
           element={
             <RequireAuth>
               <AppShell />

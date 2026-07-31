@@ -36,7 +36,7 @@ export function BatchList() {
       {batches.length === 0 ? (
         <p className="animate-fade-up text-gray-500">
           No batches yet.{" "}
-          <Link to="/upload" className="pressable inline-block text-quorum-600 hover:underline">
+          <Link to="/app/upload" className="pressable inline-block text-quorum-600 hover:underline">
             Upload your data
           </Link>{" "}
           to get started.
@@ -46,7 +46,7 @@ export function BatchList() {
           {batches.map((b, i) => (
             <Link
               key={b.id}
-              to={b.status === "done" ? `/batches/${b.id}` : `/batches/${b.id}/live`}
+              to={b.status === "done" ? `/app/batches/${b.id}` : `/app/batches/${b.id}/live`}
               className="pressable card-interactive stagger-item block p-4 rounded-lg border border-gray-200 bg-white hover:border-quorum-300"
               style={{ "--stagger-index": i } as CSSProperties}
             >

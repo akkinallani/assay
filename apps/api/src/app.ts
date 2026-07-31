@@ -7,6 +7,7 @@ import prismaPlugin from "./plugins/prisma.js";
 import authPlugin from "./plugins/auth.js";
 import healthRoute from "./routes/health.js";
 import authRoutes from "./routes/auth.js";
+import invitesRoutes from "./routes/invites.js";
 import batchRoutes from "./routes/batches.js";
 import graderRoutes from "./routes/graders.js";
 import liveEventsRoutes from "./routes/liveEvents.js";
@@ -42,7 +43,8 @@ export function buildApp(redis: Redis) {
   fastify.register(prismaPlugin);
   fastify.register(authPlugin);
   fastify.register(healthRoute);
-  fastify.register(authRoutes);
+  fastify.register(authRoutes(redis));
+  fastify.register(invitesRoutes);
   fastify.register(batchRoutes(redis));
   fastify.register(graderRoutes);
   fastify.register(liveEventsRoutes(redis));

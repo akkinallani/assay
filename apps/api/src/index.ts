@@ -4,6 +4,11 @@ import { createSignalWorker, signalQueue } from "./workers/processSignals.js";
 import { createRegradeWorker, regradeQueue } from "./workers/regradeWorker.js";
 import { PrismaClient } from "@prisma/client";
 
+if (process.env.NODE_ENV === "production" && !process.env.COOKIE_SECRET) {
+  console.error("COOKIE_SECRET must be set in production — refusing to start with an insecure default.");
+  process.exit(1);
+}
+
 const port = parseInt(process.env.PORT ?? "3000", 10);
 const redisUrl = process.env.REDIS_URL ?? "redis://localhost:6379";
 
