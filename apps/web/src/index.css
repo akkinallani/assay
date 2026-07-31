@@ -9,15 +9,15 @@
   }
 
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-quorum-50 text-stone-900;
   }
 
   ::selection {
-    @apply bg-quorum-100 text-quorum-900;
+    @apply bg-quorum-200 text-quorum-900;
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-quorum-400 ring-offset-2 ring-offset-gray-50;
+    @apply outline-none ring-2 ring-quorum-600 ring-offset-2 ring-offset-quorum-50;
   }
 }
 

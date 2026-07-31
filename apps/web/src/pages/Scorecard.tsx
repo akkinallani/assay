@@ -55,7 +55,7 @@ export function Scorecard() {
               {chartData.map((entry, index) => (
                 <Cell
                   key={index}
-                  fill={entry.flagRate > 30 ? "#ef4444" : entry.flagRate > 15 ? "#f59e0b" : "#22c55e"}
+                  fill={entry.flagRate > 30 ? "#a8453a" : entry.flagRate > 15 ? "#b07f2c" : "#5c7a48"}
                 />
               ))}
             </Bar>
@@ -86,7 +86,7 @@ export function Scorecard() {
                   <td className="py-2.5 pr-4 text-right">
                     <span
                       className={`font-semibold ${
-                        g.flagRate > 0.3 ? "text-red-600" : g.flagRate > 0.15 ? "text-yellow-600" : "text-green-600"
+                        g.flagRate > 0.3 ? "text-danger-600" : g.flagRate > 0.15 ? "text-warning-600" : "text-success-600"
                       }`}
                     >
                       {Math.round(g.flagRate * 100)}%

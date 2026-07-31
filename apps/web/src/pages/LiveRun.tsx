@@ -117,21 +117,21 @@ export function LiveRun() {
             </div>
             <div className="p-3 rounded-lg border border-gray-200 bg-white shadow-card">
               <p className="text-xs text-gray-500 uppercase tracking-wide">Regrading</p>
-              <p className="text-lg font-semibold text-blue-700 tabular-nums transition-all duration-200 ease-out">
+              <p className="text-lg font-semibold text-accent-600 tabular-nums transition-all duration-200 ease-out">
                 {progress.regradeProcessing}
               </p>
             </div>
             <div className="p-3 rounded-lg border border-gray-200 bg-white shadow-card">
               <p className="text-xs text-gray-500 uppercase tracking-wide">Regrade Done</p>
-              <p className="text-lg font-semibold text-green-700 tabular-nums transition-all duration-200 ease-out">
+              <p className="text-lg font-semibold text-success-600 tabular-nums transition-all duration-200 ease-out">
                 {progress.regradeDone}/{progress.flaggedForRegrade}
               </p>
             </div>
           </div>
 
           {isFullyDone && (
-            <div className="animate-scale-in mb-6 p-4 rounded-lg bg-green-50 border border-green-200 flex items-center justify-between">
-              <span className="text-sm text-green-800">Run complete.</span>
+            <div className="animate-scale-in mb-6 p-4 rounded-lg bg-success-50 border border-success-100 flex items-center justify-between">
+              <span className="text-sm text-success-700">Run complete.</span>
               <Link
                 to={`/app/batches/${batchId}`}
                 className="pressable inline-block text-sm font-medium text-quorum-600 hover:underline"

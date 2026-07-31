@@ -59,10 +59,10 @@ export function BatchList() {
                   <span
                     className={`text-xs px-2 py-1 rounded-full transition-colors duration-150 ease-out ${
                       b.status === "done"
-                        ? "bg-green-100 text-green-700"
+                        ? "bg-success-50 text-success-700"
                         : b.status === "processing"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-gray-100 text-gray-600"
+                          ? "bg-accent-50 text-accent-600"
+                          : "bg-quorum-100 text-quorum-500"
                     }`}
                   >
                     {b.status}

@@ -55,9 +55,9 @@ export function VerdictQueue() {
       </div>
 
       <div className="animate-fade-up flex gap-4 mb-6 text-sm">
-        <div className="px-3 py-1 rounded-full bg-red-100 text-red-700">{reReview.length} re-review</div>
-        <div className="px-3 py-1 rounded-full bg-yellow-100 text-yellow-700">{spotCheck.length} spot check</div>
-        <div className="px-3 py-1 rounded-full bg-green-100 text-green-700">{clear.length} clear</div>
+        <div className="px-3 py-1 rounded-full bg-danger-50 text-danger-700">{reReview.length} re-review</div>
+        <div className="px-3 py-1 rounded-full bg-warning-50 text-warning-700">{spotCheck.length} spot check</div>
+        <div className="px-3 py-1 rounded-full bg-success-50 text-success-700">{clear.length} clear</div>
       </div>
 
       <div className="space-y-3">

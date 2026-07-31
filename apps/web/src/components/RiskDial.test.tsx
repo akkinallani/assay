@@ -18,18 +18,18 @@ describe("RiskDial", () => {
     expect(screen.getByText("0")).toBeInTheDocument();
   });
 
-  it("uses the green threshold color at low risk", () => {
+  it("uses the muted success color at low risk", () => {
     render(<RiskDial risk={0.1} />);
-    expect(screen.getByText("10")).toHaveStyle({ color: "#22c55e" });
+    expect(screen.getByText("10")).toHaveStyle({ color: "#5c7a48" });
   });
 
-  it("uses the amber threshold color at medium risk", () => {
+  it("uses the muted warning color at medium risk", () => {
     render(<RiskDial risk={0.4} />);
-    expect(screen.getByText("40")).toHaveStyle({ color: "#f59e0b" });
+    expect(screen.getByText("40")).toHaveStyle({ color: "#b07f2c" });
   });
 
-  it("uses the red threshold color at high risk", () => {
+  it("uses the muted danger color at high risk", () => {
     render(<RiskDial risk={0.9} />);
-    expect(screen.getByText("90")).toHaveStyle({ color: "#ef4444" });
+    expect(screen.getByText("90")).toHaveStyle({ color: "#a8453a" });
   });
 });

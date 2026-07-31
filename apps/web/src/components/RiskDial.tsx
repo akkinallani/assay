@@ -7,7 +7,7 @@ interface Props {
 
 export function RiskDial({ risk, size = 48 }: Props) {
   const pct = Math.min(1, Math.max(0, risk));
-  const color = pct > 0.6 ? "#ef4444" : pct > 0.25 ? "#f59e0b" : "#22c55e";
+  const color = pct > 0.6 ? "#a8453a" : pct > 0.25 ? "#b07f2c" : "#5c7a48";
   const circumference = 2 * Math.PI * 18;
 
   // Animate from empty on mount so the dial visibly fills in, rather than
@@ -21,7 +21,7 @@ export function RiskDial({ risk, size = 48 }: Props) {
   return (
     <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox="0 0 44 44" className="-rotate-90">
-        <circle cx="22" cy="22" r="18" fill="none" stroke="#e5e7eb" strokeWidth="4" />
+        <circle cx="22" cy="22" r="18" fill="none" stroke="#ddd6c4" strokeWidth="4" />
         <circle
           cx="22"
           cy="22"

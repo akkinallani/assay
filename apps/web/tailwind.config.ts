@@ -4,15 +4,57 @@ export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: [
+          "'Instrument Sans'",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "'Segoe UI'",
+          "sans-serif",
+        ],
+      },
       colors: {
+        // Warm neutral ink scale — replaces the old indigo/violet "AI SaaS"
+        // accent. quorum-50/100 double as the cream background tints;
+        // quorum-600+ is the primary dark accent (CTAs, links, active states).
         quorum: {
-          50: "#f4f4ff",
-          100: "#e9e8ff",
-          400: "#8b7ef8",
-          500: "#6f5cf0",
-          600: "#5b45e0",
-          700: "#4934bd",
-          900: "#241a5e",
+          50: "#f6f4ee",
+          100: "#eae5d8",
+          200: "#ddd6c4",
+          400: "#8a8477",
+          500: "#57534a",
+          600: "#2a2620",
+          700: "#171512",
+          900: "#0b0a08",
+        },
+        // One small, deliberately restrained accent color — used only for
+        // tiny tags/badges, never as a primary brand color.
+        accent: {
+          50: "#eef3f6",
+          400: "#5b8aa6",
+          600: "#3d6a84",
+        },
+        // Muted, warm-toned semantic colors for risk/status signaling —
+        // desaturated versions of red/amber/green so alerts read as part of
+        // the same design system instead of stock bright Tailwind colors.
+        danger: {
+          50: "#fbeeec",
+          100: "#f5dbd6",
+          200: "#e8b6ac",
+          600: "#a8453a",
+          700: "#8a372e",
+        },
+        warning: {
+          50: "#faf1e1",
+          100: "#f2ddb3",
+          600: "#b07f2c",
+          700: "#8f6522",
+        },
+        success: {
+          50: "#eef2ea",
+          100: "#dae4d1",
+          600: "#5c7a48",
+          700: "#4a6339",
         },
       },
       transitionTimingFunction: {
@@ -20,9 +62,9 @@ export default {
         "in-out": "cubic-bezier(0.77, 0, 0.175, 1)",
       },
       boxShadow: {
-        card: "0 1px 2px rgba(15, 15, 25, 0.04), 0 1px 1px rgba(15, 15, 25, 0.03)",
-        "card-hover": "0 8px 24px -8px rgba(30, 20, 90, 0.16), 0 2px 6px -2px rgba(30, 20, 90, 0.08)",
-        popover: "0 12px 32px -8px rgba(20, 15, 60, 0.18), 0 4px 10px -4px rgba(20, 15, 60, 0.1)",
+        card: "0 1px 2px rgba(20, 18, 14, 0.04), 0 1px 1px rgba(20, 18, 14, 0.03)",
+        "card-hover": "0 8px 24px -8px rgba(20, 18, 14, 0.14), 0 2px 6px -2px rgba(20, 18, 14, 0.08)",
+        popover: "0 12px 32px -8px rgba(20, 18, 14, 0.16), 0 4px 10px -4px rgba(20, 18, 14, 0.1)",
       },
       keyframes: {
         "fade-up": {

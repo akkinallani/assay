@@ -10,10 +10,10 @@ export interface UnitLiveState {
 }
 
 const STATUS_STYLES: Record<UnitLiveState["status"], string> = {
-  queued: "bg-gray-100 text-gray-600",
-  regrading: "bg-blue-100 text-blue-700",
-  graded: "bg-green-100 text-green-700",
-  error: "bg-red-100 text-red-700",
+  queued: "bg-quorum-100 text-quorum-500",
+  regrading: "bg-accent-50 text-accent-600",
+  graded: "bg-success-50 text-success-700",
+  error: "bg-danger-50 text-danger-700",
 };
 
 export function LiveRegradePanel({ unitId, state }: { unitId: string; state: UnitLiveState }) {
@@ -27,7 +27,7 @@ export function LiveRegradePanel({ unitId, state }: { unitId: string; state: Uni
           {state.status === "regrading" ? "regrading…" : state.status}
         </span>
         {state.status === "regrading" && (
-          <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <span className="h-1.5 w-1.5 rounded-full bg-accent-400 animate-pulse" />
         )}
       </div>
 
@@ -78,7 +78,7 @@ export function LiveRegradePanel({ unitId, state }: { unitId: string; state: Uni
       )}
 
       {state.error && (
-        <div className="animate-fade-up p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+        <div className="animate-fade-up p-3 rounded-lg bg-danger-50 border border-danger-100 text-sm text-danger-700">
           {state.error}
         </div>
       )}

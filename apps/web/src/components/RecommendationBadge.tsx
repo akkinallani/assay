@@ -3,9 +3,9 @@ interface Props {
 }
 
 const CONFIG: Record<string, { label: string; className: string }> = {
-  clear: { label: "Clear", className: "bg-green-100 text-green-800" },
-  spot_check: { label: "Spot Check", className: "bg-yellow-100 text-yellow-800" },
-  re_review: { label: "Re-Review", className: "bg-red-100 text-red-800" },
+  clear: { label: "Clear", className: "bg-success-50 text-success-700" },
+  spot_check: { label: "Spot Check", className: "bg-warning-50 text-warning-700" },
+  re_review: { label: "Re-Review", className: "bg-danger-50 text-danger-700" },
 };
 
 export function RecommendationBadge({ recommendation }: Props) {

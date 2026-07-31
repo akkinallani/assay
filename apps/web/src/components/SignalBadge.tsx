@@ -14,9 +14,9 @@ const KEY_LABELS: Record<string, string> = {
 export function SignalBadge({ signalKey, fired, evidence }: Props) {
   if (!fired) return null;
   return (
-    <div className="animate-fade-up flex items-start gap-2 p-2 rounded-md bg-red-50 border border-red-200 text-sm">
-      <span className="font-semibold text-red-700 shrink-0">{KEY_LABELS[signalKey] ?? signalKey}:</span>
-      <span className="text-red-600">{evidence}</span>
+    <div className="animate-fade-up flex items-start gap-2 p-2 rounded-lg bg-danger-50 border border-danger-100 text-sm">
+      <span className="font-semibold text-danger-700 shrink-0">{KEY_LABELS[signalKey] ?? signalKey}:</span>
+      <span className="text-danger-600">{evidence}</span>
     </div>
   );
 }
