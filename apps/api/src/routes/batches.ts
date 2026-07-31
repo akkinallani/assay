@@ -87,11 +87,12 @@ export default function batchRoutes(redis: Redis): FastifyPluginAsync {
         where: { workUnit: { batchId: id, tenantId } },
         include: {
           workUnit: { include: { signals: true } },
+          resolvedBy: { select: { email: true } },
         },
         orderBy: { risk: "desc" },
       });
 
-      return verdicts;
+      return verdicts.map(({ resolvedBy, ...v }) => ({ ...v, resolvedByEmail: resolvedBy?.email ?? null }));
     });
 
     fastify.get("/batches/:batchId/units/:unitId", async (request) => {
@@ -100,11 +101,20 @@ export default function batchRoutes(redis: Redis): FastifyPluginAsync {
 
       const unit = await fastify.prisma.workUnit.findFirst({
         where: { id: unitId, batchId, tenantId },
-        include: { signals: true, verdict: true },
+        include: {
+          signals: true,
+          verdict: { include: { resolvedBy: { select: { email: true } } } },
+        },
       });
 
       if (!unit) throw notFound("unit_not_found");
-      return unit;
+
+      const { verdict, ...rest } = unit;
+      const flattenedVerdict = verdict
+        ? { ...verdict, resolvedByEmail: verdict.resolvedBy?.email ?? null, resolvedBy: undefined }
+        : verdict;
+
+      return { ...rest, verdict: flattenedVerdict };
     });
   };
 }

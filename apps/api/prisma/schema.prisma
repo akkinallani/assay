@@ -23,9 +23,10 @@ model User {
   googleId     String?   @unique
   createdAt    DateTime  @default(now())
 
-  tenant      Tenant    @relation(fields: [tenantId], references: [id])
-  sessions    Session[]
-  sentInvites Invite[]
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+  sessions         Session[]
+  sentInvites      Invite[]
+  resolvedVerdicts Verdict[]
 
   @@index([tenantId])
 }
@@ -107,14 +108,18 @@ model Signal {
 }
 
 model Verdict {
-  id             String   @id @default(cuid())
-  tenantId       String
-  workUnitId     String   @unique
-  risk           Float
-  recommendation String
-  createdAt      DateTime @default(now())
+  id               String    @id @default(cuid())
+  tenantId         String
+  workUnitId       String    @unique
+  risk             Float
+  recommendation   String
+  createdAt        DateTime  @default(now())
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+  resolutionNote   String?
 
-  workUnit WorkUnit @relation(fields: [workUnitId], references: [id])
+  workUnit   WorkUnit @relation(fields: [workUnitId], references: [id])
+  resolvedBy User?    @relation(fields: [resolvedByUserId], references: [id])
 
   @@index([tenantId])
 }

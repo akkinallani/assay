@@ -48,11 +48,17 @@ export interface WorkUnitRow {
   signals: SignalRow[];
 }
 
-export interface VerdictRow {
+export interface VerdictResolution {
   id: string;
   workUnitId: string;
   risk: number;
   recommendation: string;
+  resolvedAt: string | null;
+  resolvedByEmail: string | null;
+  resolutionNote: string | null;
+}
+
+export interface VerdictRow extends VerdictResolution {
   workUnit: WorkUnitRow;
 }
 
@@ -126,4 +132,7 @@ export const api = {
   inviteTeammate: (email: string) => post<PendingInvite>("/invites", { email }),
   acceptInvite: (token: string, password: string) =>
     post<CurrentUser>(`/invites/${token}/accept`, { password }),
+  resolveVerdict: (verdictId: string, note?: string) =>
+    post<VerdictResolution>(`/verdicts/${verdictId}/resolve`, { note }),
+  reopenVerdict: (verdictId: string) => post<VerdictResolution>(`/verdicts/${verdictId}/reopen`, {}),
 };

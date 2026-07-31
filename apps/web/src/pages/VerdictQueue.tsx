@@ -28,6 +28,7 @@ export function VerdictQueue() {
   const [verdicts, setVerdicts] = useState<VerdictRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"pending" | "resolved">("pending");
 
   useEffect(() => {
     if (!batchId) return;
@@ -43,6 +44,10 @@ export function VerdictQueue() {
   const reReview = verdicts.filter((v) => v.recommendation === "re_review");
   const spotCheck = verdicts.filter((v) => v.recommendation === "spot_check");
   const clear = verdicts.filter((v) => v.recommendation === "clear");
+
+  const pending = verdicts.filter((v) => !v.resolvedAt);
+  const resolved = verdicts.filter((v) => v.resolvedAt);
+  const displayed = tab === "pending" ? pending : resolved;
 
   return (
     <div className="p-8">
@@ -60,36 +65,66 @@ export function VerdictQueue() {
         <div className="px-3 py-1 rounded-full bg-success-50 text-success-700">{clear.length} clear</div>
       </div>
 
-      <div className="space-y-3">
-        {verdicts.map((v, i) => (
-          <Link
-            key={v.id}
-            to={`/app/batches/${batchId}/units/${v.workUnitId}`}
-            className="pressable card-interactive stagger-item block p-4 rounded-lg border border-gray-200 bg-white hover:border-quorum-300"
-            style={{ "--stagger-index": i } as CSSProperties}
-          >
-            <div className="flex items-start gap-4">
-              <RiskDial risk={v.risk} size={48} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <RecommendationBadge recommendation={v.recommendation} />
-                  <span className="text-xs text-gray-500 uppercase tracking-wide">{v.workUnit.domain}</span>
-                  <span className="text-xs text-gray-400">Grader {v.workUnit.graderId}</span>
-                  <span className="text-xs text-gray-400 ml-auto">
-                    {v.workUnit.grade.score}/{v.workUnit.grade.maxScore}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-700 truncate">{v.workUnit.task}</p>
-                <div className="mt-2 space-y-1">
-                  {v.workUnit.signals.filter((s) => s.fired).map((s) => (
-                    <SignalBadge key={s.id} signalKey={s.key} fired={s.fired} evidence={s.evidence} />
-                  ))}
+      <div className="animate-fade-up flex gap-2 mb-6">
+        <button
+          onClick={() => setTab("pending")}
+          className={`pressable text-sm px-3 py-1.5 rounded-full transition-colors duration-150 ease-out ${
+            tab === "pending" ? "bg-quorum-50 text-quorum-700 font-medium" : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+          }`}
+        >
+          Needs Review ({pending.length})
+        </button>
+        <button
+          onClick={() => setTab("resolved")}
+          className={`pressable text-sm px-3 py-1.5 rounded-full transition-colors duration-150 ease-out ${
+            tab === "resolved" ? "bg-quorum-50 text-quorum-700 font-medium" : "text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+          }`}
+        >
+          Resolved ({resolved.length})
+        </button>
+      </div>
+
+      {displayed.length === 0 ? (
+        <p className="animate-fade-up text-sm text-gray-400">
+          {tab === "pending" ? "Nothing left to review." : "Nothing resolved yet."}
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {displayed.map((v, i) => (
+            <Link
+              key={v.id}
+              to={`/app/batches/${batchId}/units/${v.workUnitId}`}
+              className="pressable card-interactive stagger-item block p-4 rounded-lg border border-gray-200 bg-white hover:border-quorum-300"
+              style={{ "--stagger-index": i } as CSSProperties}
+            >
+              <div className="flex items-start gap-4">
+                <RiskDial risk={v.risk} size={48} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <RecommendationBadge recommendation={v.recommendation} />
+                    {v.resolvedAt && (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-success-50 text-success-700">
+                        ✓ Resolved{v.resolvedByEmail ? ` by ${v.resolvedByEmail}` : ""}
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-500 uppercase tracking-wide">{v.workUnit.domain}</span>
+                    <span className="text-xs text-gray-400">Grader {v.workUnit.graderId}</span>
+                    <span className="text-xs text-gray-400 ml-auto">
+                      {v.workUnit.grade.score}/{v.workUnit.grade.maxScore}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 truncate">{v.workUnit.task}</p>
+                  <div className="mt-2 space-y-1">
+                    {v.workUnit.signals.filter((s) => s.fired).map((s) => (
+                      <SignalBadge key={s.id} signalKey={s.key} fired={s.fired} evidence={s.evidence} />
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
-          </Link>
-        ))}
-      </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

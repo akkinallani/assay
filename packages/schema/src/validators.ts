@@ -44,5 +44,10 @@ export const workUnitSchema = z.object({
 
 export const batchIngestSchema = z.array(workUnitSchema).min(1).max(10000);
 
+export const resolveVerdictSchema = z.object({
+  note: z.string().max(2000).optional(),
+});
+
 export type WorkUnitInput = z.infer<typeof workUnitSchema>;
 export type BatchIngestInput = z.infer<typeof batchIngestSchema>;
+export type ResolveVerdictInput = z.infer<typeof resolveVerdictSchema>;

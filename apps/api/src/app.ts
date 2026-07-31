@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.js";
 import googleOAuthPlugin from "./plugins/googleOAuth.js";
 import invitesRoutes from "./routes/invites.js";
 import batchRoutes from "./routes/batches.js";
+import verdictsRoutes from "./routes/verdicts.js";
 import graderRoutes from "./routes/graders.js";
 import liveEventsRoutes from "./routes/liveEvents.js";
 import type { Redis } from "ioredis";
@@ -37,6 +38,12 @@ export function buildApp(redis: Redis) {
     if (err.validation) {
       return reply.code(400).send({ error: "validation_failed", message: err.message });
     }
+    // Fastify's own framework-level errors (malformed/empty JSON body, payload too large, etc.)
+    // carry a client-error statusCode already — respect it instead of masking every one of these
+    // as a generic 500. Anything Fastify itself flags as >=500 still falls through below.
+    if (typeof err.statusCode === "number" && err.statusCode >= 400 && err.statusCode < 500) {
+      return reply.code(err.statusCode).send({ error: "bad_request", message: err.message });
+    }
     request.log.error(err);
     return reply.code(500).send({ error: "internal_error", message: "Something went wrong" });
   });
@@ -48,6 +55,7 @@ export function buildApp(redis: Redis) {
   fastify.register(googleOAuthPlugin);
   fastify.register(invitesRoutes);
   fastify.register(batchRoutes(redis));
+  fastify.register(verdictsRoutes);
   fastify.register(graderRoutes);
   fastify.register(liveEventsRoutes(redis));
 

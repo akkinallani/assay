@@ -30,6 +30,10 @@ export function ItemDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [note, setNote] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!batchId || !unitId) return;
     api.getUnit(batchId, unitId)
@@ -37,6 +41,35 @@ export function ItemDetail() {
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [batchId, unitId]);
+
+  async function handleResolve() {
+    if (!data?.verdict) return;
+    setResolving(true);
+    setResolveError(null);
+    try {
+      const updated = await api.resolveVerdict(data.verdict.id, note.trim() || undefined);
+      setData((prev) => (prev ? { ...prev, verdict: { ...prev.verdict, ...updated } } : prev));
+      setNote("");
+    } catch (e) {
+      setResolveError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  async function handleReopen() {
+    if (!data?.verdict) return;
+    setResolving(true);
+    setResolveError(null);
+    try {
+      const updated = await api.reopenVerdict(data.verdict.id);
+      setData((prev) => (prev ? { ...prev, verdict: { ...prev.verdict, ...updated } } : prev));
+    } catch (e) {
+      setResolveError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setResolving(false);
+    }
+  }
 
   if (loading) return <ItemDetailSkeleton />;
   if (error) return <div className="animate-fade-up p-8 text-red-600">Error: {error}</div>;
@@ -82,6 +115,51 @@ export function ItemDetail() {
           <p className="text-sm text-gray-700">Grader {data.graderId}</p>
         </div>
       </div>
+
+      {data.verdict && (
+        <div className="animate-fade-up mb-6 p-4 rounded-lg border border-gray-200 bg-white shadow-card">
+          {data.verdict.resolvedAt ? (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-success-50 text-success-700">
+                  ✓ Resolved
+                </span>
+                <span className="text-xs text-gray-400">
+                  {data.verdict.resolvedByEmail ? `by ${data.verdict.resolvedByEmail} · ` : ""}
+                  {new Date(data.verdict.resolvedAt).toLocaleString()}
+                </span>
+              </div>
+              {data.verdict.resolutionNote && <p className="text-sm text-gray-700 mb-3">{data.verdict.resolutionNote}</p>}
+              <button
+                onClick={handleReopen}
+                disabled={resolving}
+                className="pressable text-sm font-medium text-quorum-600 hover:underline disabled:opacity-50"
+              >
+                Reopen
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Resolve this item</h2>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="What did you decide? (optional)"
+                rows={2}
+                className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm transition-colors duration-150 ease-out focus:border-quorum-400 mb-2"
+              />
+              <button
+                onClick={handleResolve}
+                disabled={resolving}
+                className="pressable px-4 py-2 rounded-md bg-quorum-600 text-white text-sm font-medium hover:bg-quorum-700 disabled:opacity-60"
+              >
+                {resolving ? "Marking resolved…" : "Mark Resolved"}
+              </button>
+            </div>
+          )}
+          {resolveError && <p className="animate-fade-up text-sm text-red-600 mt-2">{resolveError}</p>}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
