@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  users     User[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  sessions Session[]
+
+  @@index([tenantId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Batch {
+  id        String     @id @default(cuid())
+  tenantId  String
+  status    String     @default("pending")
+  createdAt DateTime   @default(now())
+  units     WorkUnit[]
+
+  @@index([tenantId])
+}
+
+model WorkUnit {
+  id           String   @id
+  tenantId     String
+  batchId      String
+  domain       String
+  task         String
+  rubric       Json
+  modelOutput  String
+  attachments  Json?
+  grade        Json
+  graderId     String
+  timeSpentSec Int?
+  createdAt    DateTime
+
+  batch   Batch     @relation(fields: [batchId], references: [id])
+  signals Signal[]
+  verdict Verdict?
+
+  @@index([tenantId, batchId])
+  @@index([graderId])
+}
+
+model Signal {
+  id         String   @id @default(cuid())
+  tenantId   String
+  workUnitId String
+  key        String
+  fired      Boolean
+  weight     Float
+  evidence   String
+  detail     Json?
+  createdAt  DateTime @default(now())
+
+  workUnit WorkUnit @relation(fields: [workUnitId], references: [id])
+
+  @@index([workUnitId])
+  @@index([tenantId])
+}
+
+model Verdict {
+  id             String   @id @default(cuid())
+  tenantId       String
+  workUnitId     String   @unique
+  risk           Float
+  recommendation String
+  createdAt      DateTime @default(now())
+
+  workUnit WorkUnit @relation(fields: [workUnitId], references: [id])
+
+  @@index([tenantId])
+}
+
+model GraderStat {
+  id             String   @id @default(cuid())
+  tenantId       String
+  graderId       String
+  itemsSeen      Int      @default(0)
+  flagCount      Int      @default(0)
+  agreementCount Int      @default(0)
+  regradeCount   Int      @default(0)
+  domainStats    Json     @default("{}")
+  updatedAt      DateTime @updatedAt
+
+  @@unique([tenantId, graderId])
+  @@index([tenantId])
+}

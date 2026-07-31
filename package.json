@@ -1,0 +1,20 @@
+{
+  "name": "quorum",
+  "private": true,
+  "packageManager": "pnpm@11.18.0",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "db:migrate": "pnpm --filter @quorum/api exec prisma migrate dev",
+    "db:migrate:deploy": "pnpm --filter @quorum/api exec prisma migrate deploy",
+    "db:generate": "pnpm --filter @quorum/api exec prisma generate",
+    "db:seed": "pnpm --filter @quorum/api exec tsx ../../fixtures/seed.ts"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^20.0.0"
+  }
+}

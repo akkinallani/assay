@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.turbo
+**/.turbo
+.env
+.env.production
+*.env.local
+**/*.tsbuildinfo
