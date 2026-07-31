@@ -30,6 +30,9 @@ export async function llmCall(params: {
   tools?: LlmTool[];
   maxTokens?: number;
   jobId?: string;
+  /** Requests Ollama's basic JSON-mode flag — constrains output to valid JSON syntax
+   *  (not a specific schema). Combine with runtime schema validation, not a substitute for it. */
+  jsonMode?: boolean;
 }): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number }> {
   const maxAttempts = 3;
 
@@ -43,6 +46,7 @@ export async function llmCall(params: {
           messages: [{ role: "system", content: params.system }, ...params.messages],
           tools: toOllamaTools(params.tools),
           stream: false,
+          format: params.jsonMode ? "json" : undefined,
           options: { num_predict: params.maxTokens ?? 4096 },
         }),
       });

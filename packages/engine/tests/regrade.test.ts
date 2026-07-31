@@ -98,4 +98,23 @@ describe("regradeSignal", () => {
 
     expect(signal.fired).toBe(true);
   });
+
+  it("fires when coherence issues are present, even at low divergence", () => {
+    const unit = makeUnit(8, 10); // 80%
+    const result = makeAgentResult(7, 10); // 70% — 10% divergence, under threshold on its own
+    result.coherenceIssues = ["Agent's breakdown skipped 1 required criterion"];
+    const signal = regradeSignal(unit, result);
+
+    expect(signal.fired).toBe(true);
+    expect(signal.evidence).toContain("Agent's own reasoning may be unreliable");
+    expect(signal.evidence).toContain("skipped 1 required criterion");
+  });
+
+  it("does not mention coherence in evidence when there are no issues", () => {
+    const unit = makeUnit(8, 10);
+    const result = makeAgentResult(7, 10);
+    const signal = regradeSignal(unit, result);
+
+    expect(signal.evidence).not.toContain("unreliable");
+  });
 });

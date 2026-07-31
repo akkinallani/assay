@@ -72,12 +72,22 @@ export interface GraderScorecard {
   domainBreakdown: Record<string, GraderDomainStat>;
 }
 
+export interface AgentCriterionScore {
+  criterionId: string;
+  met: boolean;
+  justification: string;
+}
+
 export interface AgentRegradeResult {
   agentScore: number;
   agentMaxScore: number;
   agentReasoning: string;
   toolOutputs: Array<{ tool: string; output: string }>;
   divergence: number;
+  /** Per-rubric-criterion breakdown the agent produced, if the structured grade schema was satisfied. */
+  criteriaScores?: AgentCriterionScore[];
+  /** Issues found checking the agent's own criteriaScores against its overall score — see @quorum/engine's checkRubricCoherence. */
+  coherenceIssues?: string[];
 }
 
 export interface VerdictWithUnit extends Verdict {

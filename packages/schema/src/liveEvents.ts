@@ -30,7 +30,7 @@ export interface RegradeToolCallEvent {
   batchId: string;
   workUnitId: string;
   turn: number;
-  tool: "execute_code" | "verify_math" | "retrieve_context";
+  tool: "execute_code" | "verify_math" | "retrieve_context" | "fact_check";
   input: unknown;
   output: string;
 }

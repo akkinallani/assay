@@ -46,7 +46,11 @@ export function ItemDetail() {
   const regradeDetail = regradeSignal?.detail as {
     agentScore: number; agentMaxScore: number; agentReasoning: string;
     toolOutputs: Array<{ tool: string; output: string }>;
+    criteriaScores?: Array<{ criterionId: string; met: boolean; justification: string }>;
+    coherenceIssues?: string[];
   } | undefined;
+
+  const rubricById = new Map(data.rubric.map((c) => [c.id, c]));
 
   const sections = [
     { heading: "Task", content: data.task },
@@ -132,6 +136,45 @@ export function ItemDetail() {
                 {regradeDetail.agentReasoning}
               </p>
             </section>
+
+            {regradeDetail.coherenceIssues && regradeDetail.coherenceIssues.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold text-danger-700 uppercase tracking-wide mb-2">
+                  Agent Reasoning May Be Unreliable
+                </h2>
+                <div className="space-y-2">
+                  {regradeDetail.coherenceIssues.map((issue, i) => (
+                    <div key={i} className="p-2 rounded-lg bg-danger-50 border border-danger-100 text-sm text-danger-700">
+                      {issue}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {regradeDetail.criteriaScores && regradeDetail.criteriaScores.length > 0 && (
+              <section>
+                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">
+                  Agent's Criterion-by-Criterion Breakdown
+                </h2>
+                <div className="space-y-2">
+                  {regradeDetail.criteriaScores.map((c) => (
+                    <div
+                      key={c.criterionId}
+                      className={`p-2 rounded-lg border text-sm ${
+                        c.met ? "bg-success-50 border-success-100" : "bg-danger-50 border-danger-100"
+                      }`}
+                    >
+                      <p className={`font-medium ${c.met ? "text-success-700" : "text-danger-700"}`}>
+                        {c.met ? "Met" : "Not met"}: {rubricById.get(c.criterionId)?.text ?? c.criterionId}
+                      </p>
+                      <p className={c.met ? "text-success-600" : "text-danger-600"}>{c.justification}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {regradeDetail.toolOutputs.length > 0 && (
               <section>
                 <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-2">Tool Outputs</h2>

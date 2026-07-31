@@ -30,10 +30,18 @@ export interface SignalRow {
   detail: unknown;
 }
 
+export interface RubricCriterionRow {
+  id: string;
+  text: string;
+  required: boolean;
+  weight?: number;
+}
+
 export interface WorkUnitRow {
   id: string;
   domain: string;
   task: string;
+  rubric: RubricCriterionRow[];
   modelOutput: string;
   grade: { score: number; maxScore: number; reasoning: string };
   graderId: string;

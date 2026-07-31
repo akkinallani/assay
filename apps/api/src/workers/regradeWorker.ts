@@ -1,26 +1,24 @@
 import { Worker, Queue } from "bullmq";
 import type { PrismaClient } from "@prisma/client";
 import type { WorkUnit, AgentRegradeResult } from "@quorum/schema";
-import { regradeSignal, buildVerdict } from "@quorum/engine";
-import { llmCall } from "../llm/index.js";
+import { regradeSignal, buildVerdict, checkRubricCoherence } from "@quorum/engine";
+import { llmCall, type LlmTool, type MessageParam } from "../llm/index.js";
+import { llmCallStructured, LlmParseError } from "../llm/structured.js";
+import { regradeGradeSchema } from "../llm/schemas.js";
 import { executeCode } from "../llm/tools/codeExecutor.js";
 import { verifyMathClaim } from "../llm/tools/mathVerify.js";
 import { retrieveContext } from "../llm/tools/contextRetrieval.js";
+import { checkFacts } from "../llm/tools/factCheck.js";
 import { publishEvent } from "../events/bus.js";
 import type { Redis } from "ioredis";
-import type { LlmTool } from "../llm/index.js";
 
 export const regradeQueue = (redis: Redis) =>
   new Queue("regrade", { connection: redis });
 
 const REGRADE_SYSTEM = `You are an expert grader performing an independent quality assessment.
 You will be given a task, a rubric, and a model output to grade.
-Use the available tools to verify claims where applicable, but use at most one tool call before grading.
-Your final message must be ONLY the JSON grade, with no other text before or after it:
-{"score": number, "maxScore": number, "reasoning": "detailed explanation citing specific evidence"}`;
-
-const FINAL_TURN_REMINDER =
-  'This is your last turn. Respond with ONLY the JSON grade and nothing else — no tool calls, no explanation outside the JSON: {"score": number, "maxScore": number, "reasoning": "..."}';
+You may use the available tools to verify claims — you can use more than one if it's useful, but don't use tools you don't need.
+When asked for your final grade, you must score every rubric criterion individually as well as give an overall score.`;
 
 let currentJob: { batchId: string; workUnitId: string } | null = null;
 
@@ -29,7 +27,15 @@ export function getCurrentRegradeJob() {
 }
 
 function domainTools(domain: string): LlmTool[] {
-  const tools: LlmTool[] = [];
+  // fact_check is available in every domain — general claim verification against supplied
+  // context/attachments isn't specific to any one grading domain.
+  const tools: LlmTool[] = [
+    {
+      name: "fact_check",
+      description: "Extract factual claims from the model output and check them against the task and any attachments",
+      input_schema: { type: "object" as const, properties: {}, required: [] },
+    },
+  ];
 
   if (domain === "code") {
     tools.push({
@@ -78,6 +84,95 @@ function domainTools(domain: string): LlmTool[] {
   return tools;
 }
 
+function detectRequestedTool(content: string, tools: LlmTool[]): LlmTool | null {
+  return tools.find((t) => content.includes(t.name)) ?? null;
+}
+
+async function dispatchTool(
+  tool: LlmTool,
+  content: string,
+  unit: WorkUnit,
+  rubricText: string,
+  ctx: { redis: Redis; batchId: string; workUnitId: string; turn: number; toolOutputs: Array<{ tool: string; output: string }> }
+): Promise<string> {
+  switch (tool.name) {
+    case "execute_code": {
+      const codeMatch = content.match(/```(?:javascript|python)?\n([\s\S]+?)```/);
+      if (!codeMatch) {
+        return "I couldn't find a fenced code block to execute. Put the code in a ```javascript``` block, or move on to your final grade.";
+      }
+      const execResult = await executeCode(codeMatch[1], "javascript");
+      const output = `stdout: ${execResult.stdout}\nstderr: ${execResult.stderr}\nexitCode: ${execResult.exitCode}`;
+      ctx.toolOutputs.push({ tool: "execute_code", output });
+      await publishEvent(ctx.redis, ctx.batchId, {
+        type: "regrade_tool_call",
+        batchId: ctx.batchId,
+        workUnitId: ctx.workUnitId,
+        turn: ctx.turn,
+        tool: "execute_code",
+        input: { code: codeMatch[1], language: "javascript" },
+        output,
+      });
+      return output;
+    }
+    case "verify_math": {
+      const context = `${unit.task}\n\n${rubricText}`;
+      const verifyResult = await verifyMathClaim(content, context, ctx.workUnitId);
+      const output = `correct: ${verifyResult.correct}\nexplanation: ${verifyResult.explanation}`;
+      ctx.toolOutputs.push({ tool: "verify_math", output });
+      await publishEvent(ctx.redis, ctx.batchId, {
+        type: "regrade_tool_call",
+        batchId: ctx.batchId,
+        workUnitId: ctx.workUnitId,
+        turn: ctx.turn,
+        tool: "verify_math",
+        input: { claim: content, context },
+        output,
+      });
+      return output;
+    }
+    case "retrieve_context": {
+      const query = unit.task;
+      const retrieved = await retrieveContext(query, unit.attachments ?? []);
+      const output =
+        retrieved.length > 0
+          ? retrieved.map((r) => `[${r.source}] ${r.text}`).join("\n\n")
+          : "No relevant context found in attachments.";
+      ctx.toolOutputs.push({ tool: "retrieve_context", output });
+      await publishEvent(ctx.redis, ctx.batchId, {
+        type: "regrade_tool_call",
+        batchId: ctx.batchId,
+        workUnitId: ctx.workUnitId,
+        turn: ctx.turn,
+        tool: "retrieve_context",
+        input: { query },
+        output,
+      });
+      return output;
+    }
+    case "fact_check": {
+      const factResult = await checkFacts(unit.modelOutput, unit.task, unit.attachments ?? [], ctx.workUnitId);
+      const output =
+        factResult.claims.length > 0
+          ? factResult.claims.map((c) => `[${c.verdict}] ${c.claim} — ${c.evidence}`).join("\n")
+          : "No checkable factual claims found.";
+      ctx.toolOutputs.push({ tool: "fact_check", output });
+      await publishEvent(ctx.redis, ctx.batchId, {
+        type: "regrade_tool_call",
+        batchId: ctx.batchId,
+        workUnitId: ctx.workUnitId,
+        turn: ctx.turn,
+        tool: "fact_check",
+        input: { text: unit.modelOutput },
+        output,
+      });
+      return output;
+    }
+    default:
+      return "Unknown tool.";
+  }
+}
+
 export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
   return new Worker(
     "regrade",
@@ -105,115 +200,74 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
         const rubricText = unit.rubric
           .map((c) => `- [${c.required ? "REQUIRED" : "optional"}] ${c.text}${c.weight ? ` (weight: ${c.weight})` : ""}`)
           .join("\n");
+        const rubricWithIds = unit.rubric
+          .map((c) => `- id="${c.id}" [${c.required ? "REQUIRED" : "optional"}] ${c.text}`)
+          .join("\n");
 
-        const userPrompt = `Task:\n${unit.task}\n\nModel Output to Grade:\n${unit.modelOutput}\n\nRubric:\n${rubricText}\n\nGrade this output carefully using the rubric.`;
+        const userPrompt = `Task:\n${unit.task}\n\nModel Output to Grade:\n${unit.modelOutput}\n\nRubric:\n${rubricText}\n\nInvestigate as needed using the available tools, then grade this output carefully using the rubric.`;
 
-        const messages: Array<{ role: "user" | "assistant"; content: string | Array<{ type: string; tool_use_id?: string; content?: string; id?: string; name?: string; input?: unknown }> }> = [
-          { role: "user", content: userPrompt },
-        ];
+        const messages: MessageParam[] = [{ role: "user", content: userPrompt }];
 
-        let finalContent = "";
-        const maxTurns = 10;
-
-        for (let turn = 0; turn < maxTurns; turn++) {
-          const isLastTurn = turn === maxTurns - 1;
-          if (isLastTurn) {
-            messages.push({ role: "user", content: FINAL_TURN_REMINDER });
-          }
-
+        const maxToolTurns = 6;
+        for (let turn = 0; turn < maxToolTurns; turn++) {
           const result = await llmCall({
             model: process.env.OLLAMA_MODEL ?? "llama3.1",
             system: REGRADE_SYSTEM,
-            messages: messages as Parameters<typeof llmCall>[0]["messages"],
-            tools: isLastTurn ? undefined : tools.length > 0 ? tools : undefined,
+            messages,
+            tools: tools.length > 0 ? tools : undefined,
             maxTokens: 2048,
             jobId: workUnitId,
           });
 
-          finalContent = result.content;
           await publishEvent(redis, batchId, { type: "regrade_turn", batchId, workUnitId, turn, content: result.content });
+          messages.push({ role: "assistant", content: result.content });
 
-          if (!result.content.includes('"score"')) {
-            messages.push({ role: "assistant", content: result.content });
+          const requestedTool = detectRequestedTool(result.content, tools);
+          if (!requestedTool) break;
 
-            if (unit.domain === "code" && result.content.includes("execute_code")) {
-              const codeMatch = result.content.match(/```(?:javascript|python)?\n([\s\S]+?)```/);
-              if (!codeMatch) {
-                messages.push({
-                  role: "user",
-                  content: "I couldn't find a fenced code block to execute. Please put the code in a ```javascript``` block, or provide your final grade as JSON.",
-                });
-              } else {
-                const execResult = await executeCode(codeMatch[1], "javascript");
-                const toolOutput = `stdout: ${execResult.stdout}\nstderr: ${execResult.stderr}\nexitCode: ${execResult.exitCode}`;
-                toolOutputs.push({ tool: "execute_code", output: toolOutput });
-                await publishEvent(redis, batchId, {
-                  type: "regrade_tool_call",
-                  batchId,
-                  workUnitId,
-                  turn,
-                  tool: "execute_code",
-                  input: { code: codeMatch[1], language: "javascript" },
-                  output: toolOutput,
-                });
-                messages.push({ role: "user", content: `Tool result:\n${toolOutput}\n\nNow provide your final grade as JSON.` });
-              }
-            } else if (unit.domain === "math" && result.content.includes("verify_math")) {
-              const context = `${unit.task}\n\n${rubricText}`;
-              const verifyResult = await verifyMathClaim(result.content, context, workUnitId);
-              const toolOutput = `correct: ${verifyResult.correct}\nexplanation: ${verifyResult.explanation}`;
-              toolOutputs.push({ tool: "verify_math", output: toolOutput });
-              await publishEvent(redis, batchId, {
-                type: "regrade_tool_call",
-                batchId,
-                workUnitId,
-                turn,
-                tool: "verify_math",
-                input: { claim: result.content, context },
-                output: toolOutput,
-              });
-              messages.push({ role: "user", content: `Tool result:\n${toolOutput}\n\nNow provide your final grade as JSON.` });
-            } else if ((unit.domain === "law" || unit.domain === "safety") && result.content.includes("retrieve_context")) {
-              const query = unit.task;
-              const retrieved = await retrieveContext(query, unit.attachments ?? []);
-              const toolOutput = retrieved.length > 0
-                ? retrieved.map((r) => `[${r.source}] ${r.text}`).join("\n\n")
-                : "No relevant context found in attachments.";
-              toolOutputs.push({ tool: "retrieve_context", output: toolOutput });
-              await publishEvent(redis, batchId, {
-                type: "regrade_tool_call",
-                batchId,
-                workUnitId,
-                turn,
-                tool: "retrieve_context",
-                input: { query },
-                output: toolOutput,
-              });
-              messages.push({ role: "user", content: `Tool result:\n${toolOutput}\n\nNow provide your final grade as JSON.` });
-            } else {
-              messages.push({ role: "user", content: "Please provide your final grade as JSON: {\"score\": number, \"maxScore\": number, \"reasoning\": \"...\"}." });
-            }
-          } else {
-            break;
-          }
-        }
-
-        const jsonMatch = finalContent.match(/\{[^{}]*"score"[^{}]*\}/s);
-        if (!jsonMatch) {
-          console.warn(`Could not parse regrade result for ${workUnitId}`);
-          await publishEvent(redis, batchId, {
-            type: "regrade_error",
+          const toolOutput = await dispatchTool(requestedTool, result.content, unit, rubricText, {
+            redis,
             batchId,
             workUnitId,
-            message: "Could not parse a final grade from the agent's response",
+            turn,
+            toolOutputs,
           });
-          await publishEvent(redis, batchId, { type: "unit_status", batchId, workUnitId, status: "error" });
-          return;
+          messages.push({ role: "user", content: `Tool result:\n${toolOutput}\n\nContinue your investigation, or provide your final grade.` });
         }
 
-        const parsed = JSON.parse(jsonMatch[0]) as { score: number; maxScore: number; reasoning: string };
+        messages.push({
+          role: "user",
+          content: `Give your final grade now. Score every rubric criterion below individually by its id, then give an overall score.\n\nRubric (reference each by its id):\n${rubricWithIds}\n\nRespond with a JSON object of this exact shape:\n{"score": number, "maxScore": number, "reasoning": "detailed explanation citing specific evidence", "criteriaScores": [{"criterionId": "<id from the rubric above>", "met": boolean, "justification": "one sentence"}]}`,
+        });
+
+        let parsed;
+        try {
+          parsed = await llmCallStructured({
+            model: process.env.OLLAMA_MODEL ?? "llama3.1",
+            system: REGRADE_SYSTEM,
+            messages,
+            schema: regradeGradeSchema,
+            maxTokens: 2048,
+            jobId: workUnitId,
+          });
+        } catch (err) {
+          if (err instanceof LlmParseError) {
+            console.warn(`Could not parse regrade result for ${workUnitId}: ${err.message}`);
+            await publishEvent(redis, batchId, {
+              type: "regrade_error",
+              batchId,
+              workUnitId,
+              message: "Could not parse a final grade from the agent's response",
+            });
+            await publishEvent(redis, batchId, { type: "unit_status", batchId, workUnitId, status: "error" });
+            return;
+          }
+          throw err;
+        }
+
         const humanPct = unit.grade.score / unit.grade.maxScore;
         const agentPct = parsed.score / parsed.maxScore;
+        const coherence = checkRubricCoherence(unit.rubric, parsed.criteriaScores, parsed.score, parsed.maxScore);
 
         const agentResult: AgentRegradeResult = {
           agentScore: parsed.score,
@@ -221,6 +275,8 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
           agentReasoning: parsed.reasoning,
           toolOutputs,
           divergence: Math.abs(humanPct - agentPct),
+          criteriaScores: parsed.criteriaScores,
+          coherenceIssues: coherence.issues.length > 0 ? coherence.issues : undefined,
         };
 
         const signal = regradeSignal(unit, agentResult);
