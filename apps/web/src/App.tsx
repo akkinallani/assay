@@ -68,13 +68,13 @@ function AppShell() {
       </nav>
       <main>
         <Routes>
-          <Route path="/app" element={<BatchList />} />
-          <Route path="/app/upload" element={<UploadBatch />} />
-          <Route path="/app/batches/:batchId" element={<VerdictQueue />} />
-          <Route path="/app/batches/:batchId/live" element={<LiveRun />} />
-          <Route path="/app/batches/:batchId/units/:unitId" element={<ItemDetail />} />
-          <Route path="/app/scorecards" element={<Scorecard />} />
-          <Route path="/app/team" element={<Team />} />
+          <Route path="" element={<BatchList />} />
+          <Route path="upload" element={<UploadBatch />} />
+          <Route path="batches/:batchId" element={<VerdictQueue />} />
+          <Route path="batches/:batchId/live" element={<LiveRun />} />
+          <Route path="batches/:batchId/units/:unitId" element={<ItemDetail />} />
+          <Route path="scorecards" element={<Scorecard />} />
+          <Route path="team" element={<Team />} />
         </Routes>
       </main>
     </div>
