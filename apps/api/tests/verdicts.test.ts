@@ -98,27 +98,52 @@ describe("verdict resolution", () => {
       method: "POST",
       url: `/verdicts/${verdictId}/resolve`,
       headers: { cookie: cookieB, ...CSRF_HEADERS },
-      payload: { note: "not mine" },
+      payload: { outcome: "confirmed_issue", note: "not mine" },
     });
     expect(res.statusCode).toBe(404);
   });
 
-  it("resolves a verdict with a note and returns the resolver's email", async () => {
+  it("rejects a resolve request with no outcome", async () => {
     const res = await app.inject({
       method: "POST",
       url: `/verdicts/${verdictId}/resolve`,
       headers: { cookie: cookieA, ...CSRF_HEADERS },
-      payload: { note: "Confirmed the grade was too generous, coaching the grader." },
+      payload: { note: "missing outcome" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("rejects a resolve request with an invalid outcome", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/verdicts/${verdictId}/resolve`,
+      headers: { cookie: cookieA, ...CSRF_HEADERS },
+      payload: { outcome: "maybe" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("resolves a verdict with a note and outcome, returning the resolver's email", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/verdicts/${verdictId}/resolve`,
+      headers: { cookie: cookieA, ...CSRF_HEADERS },
+      payload: {
+        outcome: "confirmed_issue",
+        note: "Confirmed the grade was too generous, coaching the grader.",
+      },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.resolvedAt).toBeTruthy();
     expect(body.resolvedByEmail).toBe(emailA);
     expect(body.resolutionNote).toBe("Confirmed the grade was too generous, coaching the grader.");
+    expect(body.resolutionOutcome).toBe("confirmed_issue");
 
     const stored = await prisma.verdict.findUniqueOrThrow({ where: { id: verdictId } });
     expect(stored.resolvedAt).not.toBeNull();
     expect(stored.resolvedByUserId).toBeTruthy();
+    expect(stored.resolutionOutcome).toBe("confirmed_issue");
   });
 
   it("reopens a resolved verdict, clearing all resolution fields", async () => {
@@ -132,11 +157,13 @@ describe("verdict resolution", () => {
     expect(body.resolvedAt).toBeNull();
     expect(body.resolvedByEmail).toBeNull();
     expect(body.resolutionNote).toBeNull();
+    expect(body.resolutionOutcome).toBeNull();
 
     const stored = await prisma.verdict.findUniqueOrThrow({ where: { id: verdictId } });
     expect(stored.resolvedAt).toBeNull();
     expect(stored.resolvedByUserId).toBeNull();
     expect(stored.resolutionNote).toBeNull();
+    expect(stored.resolutionOutcome).toBeNull();
   });
 
   it("404s resolving a verdict id that doesn't exist", async () => {
@@ -144,7 +171,7 @@ describe("verdict resolution", () => {
       method: "POST",
       url: "/verdicts/not-a-real-id/resolve",
       headers: { cookie: cookieA, ...CSRF_HEADERS },
-      payload: {},
+      payload: { outcome: "confirmed_issue" },
     });
     expect(res.statusCode).toBe(404);
   });

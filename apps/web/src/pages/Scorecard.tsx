@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
-import { api } from "../api/client.js";
+import { api, type AccuracyReport } from "../api/client.js";
 import type { GraderScorecard } from "@quorum/schema";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+
+function pct(v: number | null): string {
+  return v === null ? "—" : `${Math.round(v * 100)}%`;
+}
+
+function precisionColor(v: number | null): string {
+  if (v === null) return "text-gray-400";
+  return v > 0.7 ? "text-success-600" : v > 0.4 ? "text-warning-600" : "text-danger-600";
+}
 
 function ScorecardSkeleton() {
   return (
@@ -15,12 +24,16 @@ function ScorecardSkeleton() {
 
 export function Scorecard() {
   const [scorecards, setScorecards] = useState<GraderScorecard[]>([]);
+  const [accuracy, setAccuracy] = useState<AccuracyReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getGraders()
-      .then(setScorecards)
+    Promise.all([api.getGraders(), api.getAccuracy()])
+      .then(([g, a]) => {
+        setScorecards(g);
+        setAccuracy(a);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -35,6 +48,45 @@ export function Scorecard() {
   return (
     <div className="p-8">
       <h1 className="animate-fade-up text-2xl font-bold text-gray-900 mb-6">Grader Scorecards</h1>
+
+      <div className="animate-fade-up mb-8 bg-white rounded-lg border border-gray-200 shadow-card p-4">
+        <h2 className="text-sm font-semibold text-gray-700 mb-4">Assay Accuracy</h2>
+        {!accuracy || accuracy.overall.resolvedCount === 0 ? (
+          <div className="flex items-center justify-center h-24 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-400 text-sm">
+            Resolve flagged items to start measuring accuracy
+          </div>
+        ) : (
+          <div>
+            <div className="flex items-baseline gap-3 mb-4">
+              <span className={`text-3xl font-bold ${precisionColor(accuracy.overall.precision)}`}>
+                {pct(accuracy.overall.precision)}
+              </span>
+              <span className="text-sm text-gray-500">
+                precision on {accuracy.overall.resolvedCount} resolved flagged item
+                {accuracy.overall.resolvedCount === 1 ? "" : "s"} ({accuracy.overall.confirmedCount} confirmed,{" "}
+                {accuracy.overall.falsePositiveCount} false positive)
+              </span>
+            </div>
+            {accuracy.bySignal.length > 0 && (
+              <div className="space-y-2">
+                {accuracy.bySignal
+                  .sort((a, b) => b.firedCount - a.firedCount)
+                  .map((s) => (
+                    <div key={s.key} className="flex items-center gap-3 text-sm">
+                      <span className="w-28 font-mono text-gray-600 capitalize">{s.key}</span>
+                      <span className={`w-12 text-right font-semibold ${precisionColor(s.precision)}`}>
+                        {pct(s.precision)}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {s.confirmedCount}/{s.firedCount} confirmed
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="animate-fade-up mb-8 bg-white rounded-lg border border-gray-200 shadow-card p-4">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">Flag Rate by Grader</h2>

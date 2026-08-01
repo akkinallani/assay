@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { useParams, Link } from "react-router-dom";
-import { api, type WorkUnitRow, type VerdictRow } from "../api/client.js";
+import { api, type WorkUnitRow, type VerdictRow, type ResolutionOutcome } from "../api/client.js";
 import { RiskDial } from "../components/RiskDial.js";
 import { RecommendationBadge } from "../components/RecommendationBadge.js";
 import { SignalBadge } from "../components/SignalBadge.js";
@@ -42,12 +42,12 @@ export function ItemDetail() {
       .finally(() => setLoading(false));
   }, [batchId, unitId]);
 
-  async function handleResolve() {
+  async function handleResolve(outcome: ResolutionOutcome) {
     if (!data?.verdict) return;
     setResolving(true);
     setResolveError(null);
     try {
-      const updated = await api.resolveVerdict(data.verdict.id, note.trim() || undefined);
+      const updated = await api.resolveVerdict(data.verdict.id, outcome, note.trim() || undefined);
       setData((prev) => (prev ? { ...prev, verdict: { ...prev.verdict, ...updated } } : prev));
       setNote("");
     } catch (e) {
@@ -121,8 +121,18 @@ export function ItemDetail() {
           {data.verdict.resolvedAt ? (
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-success-50 text-success-700">
-                  ✓ Resolved
+                <span
+                  className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${
+                    data.verdict.resolutionOutcome === "confirmed_issue"
+                      ? "bg-success-50 text-success-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {data.verdict.resolutionOutcome === "confirmed_issue"
+                    ? "✓ Confirmed issue"
+                    : data.verdict.resolutionOutcome === "false_positive"
+                      ? "✕ False positive"
+                      : "✓ Resolved"}
                 </span>
                 <span className="text-xs text-gray-400">
                   {data.verdict.resolvedByEmail ? `by ${data.verdict.resolvedByEmail} · ` : ""}
@@ -148,13 +158,22 @@ export function ItemDetail() {
                 rows={2}
                 className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm transition-colors duration-150 ease-out focus:border-quorum-400 mb-2"
               />
-              <button
-                onClick={handleResolve}
-                disabled={resolving}
-                className="pressable px-4 py-2 rounded-md bg-quorum-600 text-white text-sm font-medium hover:bg-quorum-700 disabled:opacity-60"
-              >
-                {resolving ? "Marking resolved…" : "Mark Resolved"}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleResolve("confirmed_issue")}
+                  disabled={resolving}
+                  className="pressable px-4 py-2 rounded-md bg-danger-600 text-white text-sm font-medium hover:bg-danger-700 disabled:opacity-60"
+                >
+                  {resolving ? "Saving…" : "Confirmed real issue"}
+                </button>
+                <button
+                  onClick={() => handleResolve("false_positive")}
+                  disabled={resolving}
+                  className="pressable px-4 py-2 rounded-md bg-gray-600 text-white text-sm font-medium hover:bg-gray-700 disabled:opacity-60"
+                >
+                  {resolving ? "Saving…" : "False positive"}
+                </button>
+              </div>
             </div>
           )}
           {resolveError && <p className="animate-fade-up text-sm text-red-600 mt-2">{resolveError}</p>}

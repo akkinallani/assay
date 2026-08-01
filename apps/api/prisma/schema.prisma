@@ -117,6 +117,7 @@ model Verdict {
   resolvedAt       DateTime?
   resolvedByUserId String?
   resolutionNote   String?
+  resolutionOutcome String?
 
   workUnit   WorkUnit @relation(fields: [workUnitId], references: [id])
   resolvedBy User?    @relation(fields: [resolvedByUserId], references: [id])

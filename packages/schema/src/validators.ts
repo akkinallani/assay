@@ -45,6 +45,7 @@ export const workUnitSchema = z.object({
 export const batchIngestSchema = z.array(workUnitSchema).min(1).max(10000);
 
 export const resolveVerdictSchema = z.object({
+  outcome: z.enum(["confirmed_issue", "false_positive"]),
   note: z.string().max(2000).optional(),
 });
 

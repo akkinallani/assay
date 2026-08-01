@@ -48,6 +48,8 @@ export interface WorkUnitRow {
   signals: SignalRow[];
 }
 
+export type ResolutionOutcome = "confirmed_issue" | "false_positive";
+
 export interface VerdictResolution {
   id: string;
   workUnitId: string;
@@ -56,10 +58,29 @@ export interface VerdictResolution {
   resolvedAt: string | null;
   resolvedByEmail: string | null;
   resolutionNote: string | null;
+  resolutionOutcome: ResolutionOutcome | null;
 }
 
 export interface VerdictRow extends VerdictResolution {
   workUnit: WorkUnitRow;
+}
+
+export interface SignalAccuracy {
+  key: string;
+  firedCount: number;
+  confirmedCount: number;
+  falsePositiveCount: number;
+  precision: number | null;
+}
+
+export interface AccuracyReport {
+  overall: {
+    resolvedCount: number;
+    confirmedCount: number;
+    falsePositiveCount: number;
+    precision: number | null;
+  };
+  bySignal: SignalAccuracy[];
 }
 
 export class ApiError extends Error {
@@ -132,7 +153,8 @@ export const api = {
   inviteTeammate: (email: string) => post<PendingInvite>("/invites", { email }),
   acceptInvite: (token: string, password: string) =>
     post<CurrentUser>(`/invites/${token}/accept`, { password }),
-  resolveVerdict: (verdictId: string, note?: string) =>
-    post<VerdictResolution>(`/verdicts/${verdictId}/resolve`, { note }),
+  resolveVerdict: (verdictId: string, outcome: ResolutionOutcome, note?: string) =>
+    post<VerdictResolution>(`/verdicts/${verdictId}/resolve`, { outcome, note }),
   reopenVerdict: (verdictId: string) => post<VerdictResolution>(`/verdicts/${verdictId}/reopen`, {}),
+  getAccuracy: () => get<AccuracyReport>("/accuracy"),
 };
