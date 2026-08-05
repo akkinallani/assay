@@ -29,6 +29,7 @@ export function Team() {
   const [email, setEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   function refresh() {
     return Promise.all([api.listTeamMembers(), api.listInvites()]).then(([m, i]) => {
@@ -38,7 +39,9 @@ export function Team() {
   }
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false));
+    refresh()
+      .catch((e: Error) => setLoadError(e.message))
+      .finally(() => setLoading(false));
   }, []);
 
   async function handleInvite(e: FormEvent) {
@@ -64,6 +67,10 @@ export function Team() {
         <div className="skeleton h-32 rounded-lg" />
       </div>
     );
+  }
+
+  if (loadError) {
+    return <div className="animate-fade-up p-8 text-red-600">Error: {loadError}</div>;
   }
 
   return (
