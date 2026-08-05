@@ -38,7 +38,7 @@ export const workUnitSchema = z.object({
   attachments: z.array(attachmentSchema).optional(),
   grade: gradeSchema,
   graderId: z.string().min(1),
-  timeSpentSec: z.number().positive().optional(),
+  timeSpentSec: z.number().int().positive().max(2147483647).optional(),
   createdAt: z.string().datetime(),
 });
 

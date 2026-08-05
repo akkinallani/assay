@@ -92,4 +92,12 @@ describe("genericJsonAdapter", () => {
     expect(units[0].attachments).toBeUndefined();
     expect(units[0].timeSpentSec).toBeUndefined();
   });
+
+  it("rejects a timeSpentSec that exceeds Postgres's 32-bit int column, instead of letting it crash the DB write", () => {
+    expect(() => genericJsonAdapter([validUnit({ timeSpentSec: 99999999999 })])).toThrow(ValidationError);
+  });
+
+  it("rejects a non-integer timeSpentSec", () => {
+    expect(() => genericJsonAdapter([validUnit({ timeSpentSec: 127.34 })])).toThrow(ValidationError);
+  });
 });
