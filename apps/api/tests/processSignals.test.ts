@@ -11,6 +11,11 @@ const runId = Math.random().toString(36).slice(2);
 const tenantId = `worker-test-tenant-${runId}`;
 const batchId = `worker-test-batch-${runId}`;
 const workUnitId = `worker-test-unit-${runId}`;
+const graderId = `grader-${runId}`;
+
+// A second work unit for the same grader, in a different domain, so the multi-item test below
+// can prove domainStats accumulates across items instead of freezing after the first one.
+const secondWorkUnitId = `worker-test-unit-2-${runId}`;
 
 let worker: ReturnType<typeof createSignalWorker>;
 
@@ -34,7 +39,25 @@ beforeAll(async () => {
         // of a real LLM call.
         reasoning: "This response is wrong and contains an error.",
       },
-      graderId: `grader-${runId}`,
+      graderId,
+      createdAt: new Date(),
+    },
+  });
+  await prisma.workUnit.create({
+    data: {
+      id: secondWorkUnitId,
+      tenantId,
+      batchId,
+      domain: "code",
+      task: "reverse a string",
+      rubric: [{ id: "r1", text: "Correct output", required: true, weight: 1 }],
+      modelOutput: "def reverse(s): return s[::-1]",
+      grade: {
+        score: 9,
+        maxScore: 10,
+        reasoning: "This response is wrong and contains an error.",
+      },
+      graderId,
       createdAt: new Date(),
     },
   });
@@ -46,9 +69,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await worker.close();
-  await prisma.signal.deleteMany({ where: { workUnitId } });
-  await prisma.verdict.deleteMany({ where: { workUnitId } });
-  await prisma.workUnit.deleteMany({ where: { id: workUnitId } });
+  await prisma.signal.deleteMany({ where: { workUnitId: { in: [workUnitId, secondWorkUnitId] } } });
+  await prisma.verdict.deleteMany({ where: { workUnitId: { in: [workUnitId, secondWorkUnitId] } } });
+  await prisma.workUnit.deleteMany({ where: { id: { in: [workUnitId, secondWorkUnitId] } } });
   await prisma.batch.deleteMany({ where: { id: batchId } });
   await prisma.graderStat.deleteMany({ where: { tenantId } });
   await prisma.$disconnect();
@@ -80,5 +103,20 @@ describe("processSignals worker", () => {
 
     const batch = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
     expect(batch.status).toBe("done");
+  });
+
+  it("accumulates domainStats per-domain across multiple items for the same grader, not just the first", async () => {
+    const stat = await pollUntil(async () => {
+      const s = await prisma.graderStat.findUnique({ where: { tenantId_graderId: { tenantId, graderId } } });
+      return s && s.itemsSeen >= 2 ? s : null;
+    });
+
+    expect(stat.itemsSeen).toBe(2);
+    // Both units deliberately fire the heuristic consistency signal (see comment above), so
+    // flagCount is 1 for each domain — the point here is that domainStats has an entry for
+    // BOTH domains at all (previously only the first-ever domain was ever recorded).
+    const domainStats = stat.domainStats as Record<string, { itemsSeen: number; flagCount: number }>;
+    expect(domainStats.math).toEqual({ itemsSeen: 1, flagCount: 1 });
+    expect(domainStats.code).toEqual({ itemsSeen: 1, flagCount: 1 });
   });
 });

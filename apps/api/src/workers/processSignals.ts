@@ -99,6 +99,24 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
 
         const anyFired = signals.some((s) => s.fired);
 
+        // Merge this item's domain into the grader's existing domainStats — the upsert's `create`
+        // branch only fires once per grader, so any per-domain accumulation has to happen here,
+        // not inside the upsert data itself.
+        const priorStat = await prisma.graderStat.findUnique({
+          where: { tenantId_graderId: { tenantId: unit.tenantId, graderId: unit.graderId } },
+          select: { domainStats: true },
+        });
+        const existingDomainStats =
+          (priorStat?.domainStats as Record<string, { itemsSeen: number; flagCount: number }> | null) ?? {};
+        const priorDomainStat = existingDomainStats[unit.domain] ?? { itemsSeen: 0, flagCount: 0 };
+        const nextDomainStats = {
+          ...existingDomainStats,
+          [unit.domain]: {
+            itemsSeen: priorDomainStat.itemsSeen + 1,
+            flagCount: priorDomainStat.flagCount + (anyFired ? 1 : 0),
+          },
+        };
+
         await prisma.graderStat.upsert({
           where: { tenantId_graderId: { tenantId: unit.tenantId, graderId: unit.graderId } },
           create: {
@@ -106,11 +124,12 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
             graderId: unit.graderId,
             itemsSeen: 1,
             flagCount: anyFired ? 1 : 0,
-            domainStats: { [unit.domain]: { itemsSeen: 1, flagCount: anyFired ? 1 : 0 } },
+            domainStats: nextDomainStats,
           },
           update: {
             itemsSeen: { increment: 1 },
             flagCount: { increment: anyFired ? 1 : 0 },
+            domainStats: nextDomainStats,
           },
         });
 
