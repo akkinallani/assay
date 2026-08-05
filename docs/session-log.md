@@ -1,5 +1,21 @@
 # Session Log
 
+## 2026-08-05 (2) — execute_code regrade tool ignored the model's declared language
+
+Surveyed: `docs/session-log.md`, `gh pr list` equivalent (no open PRs), `git log`, then a full `pnpm install && pnpm typecheck && pnpm test && pnpm build`. All green from a clean state this time — the Prisma pipeline fix from earlier today held up. Started local Postgres 16 + Redis in-sandbox (no docker daemon here either) to run the full integration suite, not just DB-independent tests: 66/66 passed.
+
+Grepped for TODO/FIXME/HACK/PROD — only the two known, already-scoped PROD comments (`codeExecutor.ts` process-isolation caveat, `consistency.ts` heuristic-upgrade note already resolved by an earlier session) remained; neither is a fresh problem. Read through the auth/session/invite/batch/verdict routes and the two BullMQ workers (`processSignals.ts`, `regradeWorker.ts`) looking for genuine bugs, security gaps, or thin coverage.
+
+Found one that cleared the bar: in `regradeWorker.ts`'s `dispatchTool`, the `execute_code` case extracted the model's fenced code block via regex but then called `executeCode(code, "javascript")` with the language **hardcoded**, ignoring whether the model had fenced the block as ` ```python ` or ` ```javascript `. Reproduced directly against the built `dist` output before touching anything: running `print(2 + 2)` through the hardcoded path threw `ReferenceError: print is not defined` (Node trying to parse Python), while running it correctly as `"python"` returned `4`. Since `execute_code` is the tool offered specifically for `domain === "code"` regrades, and code submissions are not uniformly JavaScript, this meant the tool's Python-verification path was silently broken for every code-domain regrade that used it — the agent would get a bogus JS error back instead of real execution output, no error visible anywhere in logs pointing at the root cause.
+
+Shipped: added `extractCodeBlock()` to `codeExecutor.ts` (a small pure helper that captures the fence's declared language, defaulting to `javascript` only when unlabeled) and used it in `dispatchTool` instead of the hardcoded string; the `regrade_tool_call` event's published `input.language` now reflects the real language too. Added `apps/api/tests/codeExecutor.test.ts` (6 new tests): unit coverage for `extractCodeBlock`'s detection across python/javascript/unlabeled/no-fence, plus two integration tests that actually run a Python and a JS snippet through `executeCode` and assert on real stdout — this is the first test coverage `codeExecutor.ts` has ever had. Verified with `pnpm typecheck` (clean), `pnpm test` (72/72, was 66), and `pnpm build` (clean), all against the same local Postgres+Redis setup.
+
+Merged: [PR #3](https://github.com/akkinallani/assay/pull/3) via squash merge. CI (`check` + `GitGuardian Security Checks`) green before merge — this is the first PR since this morning's CI-repair session, confirming that fix holds for a real PR end-to-end.
+
+Considered and rejected: the web bundle-size warning (`dist/assets/index-*.js` at 590KB) surfaced in every build — purely a perf/cosmetic nice-to-have with no demonstrable user-facing breakage today, so it doesn't clear the bar; the `codeExecutor.ts` PROD comment about full container isolation (gVisor/Firecracker) — real gap but a "future need" architectural addition, not a fix to something concretely broken right now, and adding a sandboxing layer would be a large new dependency, not the smallest diff; nothing else surveyed looked broken enough to act on, so the loop stopped at one item for this run.
+
+Same branch-deletion limitation as this morning: raw `git push origin --delete` on the merged branch (`agent/execute-code-language-detect-2026-08-05-1`) still 403s from this sandbox; the branch is merged with no unmerged work, just left dangling on GitHub for a future session/the user to clean up via the UI.
+
 ## 2026-07-29 — Initial build
 
 Built full Phase 0–4 from scratch.
