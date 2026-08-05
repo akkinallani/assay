@@ -13,20 +13,24 @@
     "NODE_ENV"
   ],
   "tasks": {
+    "generate": {
+      "inputs": ["prisma/schema.prisma", "prisma/migrations/**"],
+      "outputs": []
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["generate", "^build"],
       "outputs": ["dist/**"]
     },
     "dev": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["generate", "^build"],
       "persistent": true,
       "cache": false
     },
     "test": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["generate", "^build"]
     },
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["generate", "^build"]
     }
   }
 }
