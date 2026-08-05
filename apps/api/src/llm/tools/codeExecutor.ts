@@ -14,6 +14,14 @@ export interface CodeExecResult {
   timedOut: boolean;
 }
 
+/** Pulls the first fenced code block out of an LLM response and detects its declared
+ *  language (```python vs ```javascript), defaulting to javascript when unlabeled. */
+export function extractCodeBlock(content: string): { code: string; language: "javascript" | "python" } | null {
+  const match = content.match(/```(javascript|python)?\n([\s\S]+?)```/);
+  if (!match) return null;
+  return { code: match[2], language: match[1] === "python" ? "python" : "javascript" };
+}
+
 // PROD: this is process-level hardening, not full isolation — no container/VM boundary
 // (gVisor/Firecracker/E2B). It blocks the concrete gaps that existed before (secret-leak via
 // process.env, filesystem writes/reads outside the run dir, spawning further processes for JS),

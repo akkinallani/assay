@@ -5,7 +5,7 @@ import { regradeSignal, buildVerdict, checkRubricCoherence } from "@quorum/engin
 import { llmCall, type LlmTool, type MessageParam } from "../llm/index.js";
 import { llmCallStructured, LlmParseError } from "../llm/structured.js";
 import { regradeGradeSchema } from "../llm/schemas.js";
-import { executeCode } from "../llm/tools/codeExecutor.js";
+import { executeCode, extractCodeBlock } from "../llm/tools/codeExecutor.js";
 import { verifyMathClaim } from "../llm/tools/mathVerify.js";
 import { retrieveContext } from "../llm/tools/contextRetrieval.js";
 import { checkFacts } from "../llm/tools/factCheck.js";
@@ -97,11 +97,11 @@ async function dispatchTool(
 ): Promise<string> {
   switch (tool.name) {
     case "execute_code": {
-      const codeMatch = content.match(/```(?:javascript|python)?\n([\s\S]+?)```/);
-      if (!codeMatch) {
-        return "I couldn't find a fenced code block to execute. Put the code in a ```javascript``` block, or move on to your final grade.";
+      const block = extractCodeBlock(content);
+      if (!block) {
+        return "I couldn't find a fenced code block to execute. Put the code in a ```javascript``` or ```python``` block, or move on to your final grade.";
       }
-      const execResult = await executeCode(codeMatch[1], "javascript");
+      const execResult = await executeCode(block.code, block.language);
       const output = `stdout: ${execResult.stdout}\nstderr: ${execResult.stderr}\nexitCode: ${execResult.exitCode}`;
       ctx.toolOutputs.push({ tool: "execute_code", output });
       await publishEvent(ctx.redis, ctx.batchId, {
@@ -110,7 +110,7 @@ async function dispatchTool(
         workUnitId: ctx.workUnitId,
         turn: ctx.turn,
         tool: "execute_code",
-        input: { code: codeMatch[1], language: "javascript" },
+        input: { code: block.code, language: block.language },
         output,
       });
       return output;
