@@ -75,6 +75,25 @@ describe("resolveGoogleUser", () => {
     expect(userCount).toBe(1);
   });
 
+  it("links to an existing password account whose email differs only by case", async () => {
+    const storedEmail = `mixed-case-${runId}@example.com`;
+    createdUserEmails.push(storedEmail);
+
+    const tenant = await prisma.tenant.create({ data: { name: `Mixed Case Tenant ${runId}` } });
+    createdTenantNames.push(tenant.name);
+    const passwordHash = await bcrypt.hash("correct-horse-battery", 12);
+    const existing = await prisma.user.create({ data: { email: storedEmail, passwordHash, tenantId: tenant.id } });
+
+    const googleEmail = storedEmail.toUpperCase();
+    const linked = await resolveGoogleUser(prisma, { googleId: `g-${runId}-mixedcase`, email: googleEmail, emailVerified: true });
+
+    expect(linked.id).toBe(existing.id);
+    expect(linked.email).toBe(storedEmail);
+
+    const userCount = await prisma.user.count({ where: { email: storedEmail } });
+    expect(userCount).toBe(1);
+  });
+
   it("joins a pending invite's tenant instead of creating a new one", async () => {
     const email = `invited-${runId}@example.com`;
     createdUserEmails.push(email);
