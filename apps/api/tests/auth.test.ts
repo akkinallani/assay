@@ -11,6 +11,7 @@ const runId = Math.random().toString(36).slice(2);
 const emailA = `auth-test-a-${runId}@example.com`;
 const emailB = `auth-test-b-${runId}@example.com`;
 const emailLockout = `auth-test-lockout-${runId}@example.com`;
+const emailCase = `auth-test-case-${runId}@example.com`;
 const password = "correct-horse-battery";
 
 // Every mutating request needs this — the API rejects non-GET requests
@@ -24,10 +25,10 @@ function sessionCookieFrom(res: { headers: Record<string, unknown> }): string {
 }
 
 afterAll(async () => {
-  await prisma.session.deleteMany({ where: { user: { email: { in: [emailA, emailB, emailLockout] } } } });
-  await prisma.user.deleteMany({ where: { email: { in: [emailA, emailB, emailLockout] } } });
+  await prisma.session.deleteMany({ where: { user: { email: { in: [emailA, emailB, emailLockout, emailCase] } } } });
+  await prisma.user.deleteMany({ where: { email: { in: [emailA, emailB, emailLockout, emailCase] } } });
   await prisma.tenant.deleteMany({
-    where: { name: { in: [`Tenant A ${runId}`, `Tenant B ${runId}`, `Tenant Lockout ${runId}`] } },
+    where: { name: { in: [`Tenant A ${runId}`, `Tenant B ${runId}`, `Tenant Lockout ${runId}`, `Tenant Case ${runId}`] } },
   });
   await redis.del(`login-fail:${emailLockout.toLowerCase()}`);
   await app.close();
@@ -80,11 +81,13 @@ describe("auth", () => {
   });
 
   it("logs in with correct credentials and rejects wrong password", async () => {
+    // Uses a different case than the email was signed up with — also covers that login is
+    // case-insensitive, without spending a separate call against the login rate limiter below.
     const good = await app.inject({
       method: "POST",
       url: "/auth/login",
       headers: CSRF_HEADERS,
-      payload: { email: emailA, password },
+      payload: { email: emailA.toUpperCase(), password },
     });
     expect(good.statusCode).toBe(200);
 
@@ -122,6 +125,27 @@ describe("auth", () => {
       payload: { email: emailLockout, password },
     });
     expect(lockedOut.statusCode).toBe(429);
+  });
+
+  it("normalizes email case at signup, so a different-case duplicate is rejected as taken", async () => {
+    const mixedCaseEmail = emailCase.replace(/^./, (c) => c.toUpperCase());
+
+    const signup = await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      headers: CSRF_HEADERS,
+      payload: { email: mixedCaseEmail, password, tenantName: `Tenant Case ${runId}` },
+    });
+    expect(signup.statusCode).toBe(201);
+    expect(signup.json().email).toBe(emailCase);
+
+    const dupSignup = await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      headers: CSRF_HEADERS,
+      payload: { email: emailCase.toUpperCase(), password, tenantName: `Tenant Case Dup ${runId}` },
+    });
+    expect(dupSignup.statusCode).toBe(409);
   });
 
   it("logs out and invalidates the session", async () => {
