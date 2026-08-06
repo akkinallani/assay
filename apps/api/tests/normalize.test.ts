@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { coverageSignal } from "@quorum/engine";
+import type { WorkUnit } from "@quorum/schema";
 import { genericJsonAdapter } from "../src/ingestion/adapters/genericJson.js";
 import { normalizeDomain } from "../src/ingestion/normalize.js";
 
@@ -98,5 +100,43 @@ describe("genericJsonAdapter flexibility", () => {
 
   it("still rejects an explicit non-positive maxScore", () => {
     expect(() => genericJsonAdapter([baseUnit({ grade: { score: 1, maxScore: 0, reasoning: "x" } })])).toThrow();
+  });
+
+  it("gives distinct ids to auto-generated rubric criteria that share a long common text prefix", () => {
+    // Both strings share the same first 40+ characters — a common shape for templated rubric
+    // checklists ("The response must clearly explain each step of the reasoning: <specific part>").
+    const sharedPrefix = "The response must clearly explain each step of the reasoning";
+    const units = genericJsonAdapter([
+      baseUnit({
+        rubric: [`${sharedPrefix}, part one`, `${sharedPrefix}, part two`],
+      }),
+    ]);
+    const [c1, c2] = units[0].rubric;
+    expect(c1.id).not.toBe(c2.id);
+  });
+
+  it("does not let a rubric id collision silently mask a missed required criterion in coverage scoring", () => {
+    // Reproduces the real end-to-end failure the id collision caused: with the pre-fix id
+    // generation, both criteria below normalized to the same id, so scoring only the first one
+    // made coverageSignal treat the second (genuinely unaddressed) criterion as covered too.
+    const sharedPrefix = "The response must clearly explain each step of the reasoning";
+    const units = genericJsonAdapter([
+      baseUnit({
+        rubric: [`${sharedPrefix}, part one`, `${sharedPrefix}, part two`],
+      }),
+    ]);
+    const [c1] = units[0].rubric;
+    const unit = {
+      ...units[0],
+      grade: {
+        ...units[0].grade,
+        reasoning: "Addressed part one only.",
+        criteriaScores: [{ criterionId: c1.id, score: 1 }],
+      },
+    } as unknown as WorkUnit;
+
+    const signal = coverageSignal(unit, { batchId: "b1", cohortStats: new Map() });
+    expect(signal.fired).toBe(true);
+    expect(signal.evidence).toContain("part two");
   });
 });
