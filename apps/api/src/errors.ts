@@ -18,3 +18,4 @@ export const badRequest = (code: string, message?: string, issues?: unknown) =>
   new ApiError(400, code, message, issues);
 export const conflict = (code: string, message?: string) => new ApiError(409, code, message);
 export const tooManyRequests = (code: string, message?: string) => new ApiError(429, code, message);
+export const serviceUnavailable = (code: string, message?: string) => new ApiError(503, code, message);
