@@ -17,7 +17,12 @@ vi.mock("../src/llm/index.js", () => ({
 
 const { createSignalWorker, signalQueue } = await import("../src/workers/processSignals.js");
 
-const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null });
+// createSignalWorker listens on the hardcoded "process-signals" BullMQ queue name — every test
+// file that spins one up shares that same queue in the same real Redis instance. Without a
+// dedicated logical DB per file, vitest running these files concurrently lets one file's worker
+// steal and process a job another file added, using the wrong (or no) LLM mock. A unique `db`
+// index per file gives each one a fully isolated Redis key space, closing that race.
+const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null, db: 3 });
 const prisma = new PrismaClient();
 
 const runId = Math.random().toString(36).slice(2);
@@ -27,6 +32,15 @@ const workUnitId = `double-regrade-test-unit-${runId}`;
 
 let worker: ReturnType<typeof createSignalWorker>;
 const regradeQueueMock = { add: vi.fn().mockResolvedValue(undefined) };
+
+// The worker's job handler runs two sequential async loops (see processSignals.ts) — the first
+// loop's DB writes (which is all a `verdict` row's existence proves) complete well before the
+// second, LLM-backed spot-check loop does. Waiting on intermediate DB state instead of the job's
+// actual completion is a race: it can read a consistent snapshot before the second loop's own
+// writes/queue calls have happened, especially on a slower CI runner. Waiting for the worker's
+// own "completed" event is what actually guarantees the whole handler — both loops — has
+// returned before assertions run.
+let jobCompleted = false;
 
 beforeAll(async () => {
   await prisma.batch.create({ data: { id: batchId, tenantId, status: "pending" } });
@@ -51,6 +65,9 @@ beforeAll(async () => {
   });
 
   worker = createSignalWorker(prisma, redis, regradeQueueMock as never);
+  worker.on("completed", () => {
+    jobCompleted = true;
+  });
   await worker.waitUntilReady();
   await signalQueue(redis).add("process-signals", { batchId, tenantId });
 });
@@ -78,10 +95,7 @@ async function pollUntil<T>(fn: () => Promise<T | null>, timeoutMs = 10000): Pro
 
 describe("processSignals worker — double regrade queuing", () => {
   it("queues only one regrade job when both the heuristic and the LLM spot-check flag the same unit", async () => {
-    await pollUntil(async () => {
-      const v = await prisma.verdict.findUnique({ where: { workUnitId } });
-      return v && v.risk > 0 ? v : null;
-    });
+    await pollUntil(async () => (jobCompleted ? true : null));
 
     // Both the coverage signal (from the first loop) and the flipped consistency signal (from
     // the spot-check loop) independently cross the 0.4 regrade threshold — without the fix this
