@@ -67,7 +67,7 @@ export function UploadBatch() {
   function retryWithUniqueIds() {
     if (!pendingUnits) return;
     const suffix = Date.now().toString(36);
-    void submit(pendingUnits.map((u) => ({ ...u, id: `${String(u.id)}-${suffix}` })));
+    void submit(pendingUnits.map((u, i) => ({ ...u, id: `${String(u.id)}-${suffix}-${i}` })));
   }
 
   const codeClass = "text-xs bg-gray-100 px-1 py-0.5 rounded";
