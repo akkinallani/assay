@@ -128,7 +128,11 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
         if (already) {
           if (!already.consistencyFired) consistencyClearUnits.push(unit);
           if (already.risk >= 0.4 && !queuedForRegrade.has(unit.id)) {
-            await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
+            await regradeQueue.add(
+              "regrade-item",
+              { workUnitId: unit.id, batchId },
+              { attempts: 3, backoff: { type: "exponential", delay: 1000 } }
+            );
             queuedForRegrade.add(unit.id);
           }
           continue;
@@ -177,7 +181,11 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
         ]);
 
         if (verdict.risk >= 0.4) {
-          await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
+          await regradeQueue.add(
+            "regrade-item",
+            { workUnitId: unit.id, batchId },
+            { attempts: 3, backoff: { type: "exponential", delay: 1000 } }
+          );
           queuedForRegrade.add(unit.id);
         }
       }
@@ -225,7 +233,11 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
         ]);
 
         if (updatedVerdict.risk >= 0.4 && !queuedForRegrade.has(unit.id)) {
-          await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
+          await regradeQueue.add(
+            "regrade-item",
+            { workUnitId: unit.id, batchId },
+            { attempts: 3, backoff: { type: "exponential", delay: 1000 } }
+          );
           queuedForRegrade.add(unit.id);
         }
       }
