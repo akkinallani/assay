@@ -11,6 +11,18 @@ export interface MessageParam {
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
 
+// Node's fetch() reports connection failures as `TypeError: fetch failed`, with the actual
+// cause (e.g. ECONNREFUSED) nested in `err.cause`, never in `err.message` itself.
+function isConnRefusedError(err: unknown): boolean {
+  if (err instanceof Error && err.message.includes("ECONNREFUSED")) return true;
+  const cause = err instanceof Error ? err.cause : undefined;
+  if (cause instanceof Error && cause.message.includes("ECONNREFUSED")) return true;
+  if (typeof cause === "object" && cause !== null && "code" in cause) {
+    return (cause as { code?: unknown }).code === "ECONNREFUSED";
+  }
+  return false;
+}
+
 function toOllamaTools(tools?: LlmTool[]) {
   if (!tools || tools.length === 0) return undefined;
   return tools.map((t) => ({
@@ -78,8 +90,7 @@ export async function llmCall(params: {
 
       return { content: data.message.content, inputTokens, outputTokens, costUsd: 0 };
     } catch (err: unknown) {
-      const isConnRefused = err instanceof Error && err.message.includes("ECONNREFUSED");
-      if (isConnRefused && attempt < maxAttempts) {
+      if (isConnRefusedError(err) && attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
         continue;
       }
