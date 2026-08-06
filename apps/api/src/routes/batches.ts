@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { genericJsonAdapter, ValidationError } from "../ingestion/adapters/genericJson.js";
 import { signalQueue } from "../workers/processSignals.js";
 import type { Redis } from "ioredis";
-import { badRequest, conflict, notFound } from "../errors.js";
+import { badRequest, conflict, notFound, serviceUnavailable } from "../errors.js";
 
 export default function batchRoutes(redis: Redis): FastifyPluginAsync {
   return async (fastify) => {
@@ -61,11 +61,26 @@ export default function batchRoutes(redis: Redis): FastifyPluginAsync {
       }
 
       const queue = signalQueue(redis);
-      await queue.add(
-        "process-signals",
-        { batchId, tenantId },
-        { attempts: 3, backoff: { type: "exponential", delay: 1000 } }
-      );
+      try {
+        await queue.add(
+          "process-signals",
+          { batchId, tenantId },
+          { attempts: 3, backoff: { type: "exponential", delay: 1000 } }
+        );
+      } catch (err) {
+        // The transaction above already committed the batch + work units. If queuing the
+        // processing job itself fails (e.g. a transient Redis blip), don't leave an orphaned
+        // batch stuck at "pending" forever with no signals ever computed and no error visible
+        // anywhere — clean it up so the client can safely retry the exact same upload.
+        await fastify.prisma.$transaction([
+          fastify.prisma.workUnit.deleteMany({ where: { batchId } }),
+          fastify.prisma.batch.delete({ where: { id: batchId } }),
+        ]);
+        throw serviceUnavailable(
+          "batch_enqueue_failed",
+          "Failed to queue the batch for processing. Please retry your upload."
+        );
+      }
 
       return reply.code(201).send({ batchId, unitCount: units.length });
     });
