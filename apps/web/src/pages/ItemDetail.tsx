@@ -284,6 +284,11 @@ export function ItemDetail() {
               </section>
             )}
           </div>
+        ) : regradeSignal ? (
+          <div className="animate-fade-up flex flex-col items-center justify-center gap-1 h-32 bg-danger-50 rounded-lg border border-dashed border-danger-200 text-danger-600 text-sm text-center px-4">
+            <span className="font-medium">Agent re-grade failed</span>
+            <span className="text-xs text-danger-500">{regradeSignal.evidence}</span>
+          </div>
         ) : (
           <div className="animate-fade-up flex items-center justify-center h-32 bg-gray-50 rounded-lg border border-dashed border-gray-300 text-gray-400 text-sm">
             Agent re-grade pending or not triggered
