@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, type CurrentUser } from "../api/client.js";
+import { api, setUnauthorizedHandler, type CurrentUser } from "../api/client.js";
 
 interface AuthContextValue {
   user: CurrentUser | null;
@@ -23,6 +23,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    setUnauthorizedHandler(() => setUser(null));
+    return () => setUnauthorizedHandler(null);
+  }, []);
+
   const value: AuthContextValue = {
     user,
     loading,
@@ -39,8 +44,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
     },
     logout: async () => {
-      await api.logout();
-      setUser(null);
+      try {
+        await api.logout();
+      } finally {
+        setUser(null);
+      }
     },
   };
 
