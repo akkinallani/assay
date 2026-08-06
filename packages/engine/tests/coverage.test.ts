@@ -65,6 +65,24 @@ describe("coverageSignal", () => {
     expect(result.evidence).toContain("Do not lie");
   });
 
+  it("fires for a short-keyword criterion when the reasoning only contains the keyword as a substring of an unrelated word", () => {
+    // "not" is a substring of "noted", "document", etc. A plain `.includes()` check would
+    // wrongly treat any reasoning containing those words as addressing "Do not lie".
+    const result = coverageSignal(
+      unit({
+        rubric: [{ id: "r1", text: "Do not lie", required: true, weight: 1 }],
+        grade: {
+          score: 9,
+          maxScore: 10,
+          reasoning:
+            "The grader noted the explanation was thorough and well organized, covering the key historical points.",
+        },
+      }),
+      ctx
+    );
+    expect(result.fired).toBe(true);
+  });
+
   it("does not fire when the rubric has no required criteria", () => {
     const result = coverageSignal(
       unit({ rubric: [{ id: "r1", text: "Nice to have", required: false, weight: 0.2 }] }),

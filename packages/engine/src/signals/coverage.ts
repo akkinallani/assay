@@ -14,6 +14,13 @@ function keywordsFromText(text: string): string[] {
   return longWords.length > 0 ? longWords : words;
 }
 
+// Word-boundary match, not a plain substring test — a short keyword like "not" or "do" would
+// otherwise match inside unrelated words ("noted", "document"), silently reporting a criterion
+// as covered when the reasoning never actually addresses it.
+function containsKeyword(text: string, keyword: string): boolean {
+  return new RegExp(`\\b${keyword}\\b`).test(text);
+}
+
 export function coverageSignal(unit: WorkUnit, _ctx: BatchContext): Signal {
   const requiredCriteria = unit.rubric.filter((c) => c.required);
 
@@ -34,7 +41,7 @@ export function coverageSignal(unit: WorkUnit, _ctx: BatchContext): Signal {
     const reasoningLower = unit.grade.reasoning.toLowerCase();
     for (const criterion of requiredCriteria) {
       const keywords = keywordsFromText(criterion.text);
-      const covered = keywords.some((kw) => reasoningLower.includes(kw));
+      const covered = keywords.some((kw) => containsKeyword(reasoningLower, kw));
       if (!covered) {
         missedCriteria.push(criterion.text);
       }
