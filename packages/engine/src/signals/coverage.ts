@@ -2,10 +2,16 @@ import type { WorkUnit } from "@quorum/schema";
 import type { BatchContext, Signal } from "./types.js";
 
 function keywordsFromText(text: string): string[] {
-  return text
+  const words = text
     .toLowerCase()
     .split(/\W+/)
-    .filter((w) => w.length > 3);
+    .filter((w) => w.length > 0);
+  // Prefer longer words to avoid over-matching common short words, but a criterion made up
+  // entirely of short words (e.g. "Do not lie") must still fall back to them — otherwise this
+  // returns [], and `[].some(...)` is unconditionally false, marking every such criterion as
+  // missed regardless of what the reasoning actually says.
+  const longWords = words.filter((w) => w.length > 3);
+  return longWords.length > 0 ? longWords : words;
 }
 
 export function coverageSignal(unit: WorkUnit, _ctx: BatchContext): Signal {
