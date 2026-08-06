@@ -88,13 +88,22 @@ const verdictsRoutes: FastifyPluginAsync = async (fastify) => {
 
     const firedSignals = await fastify.prisma.signal.findMany({
       where: { tenantId, fired: true, workUnit: { verdict: { resolutionOutcome: { not: null } } } },
-      select: { key: true, workUnit: { select: { verdict: { select: { resolutionOutcome: true } } } } },
+      select: {
+        key: true,
+        createdAt: true,
+        workUnit: { select: { verdict: { select: { resolutionOutcome: true, resolvedAt: true } } } },
+      },
     });
 
     const bySignalOutcomes = new Map<string, string[]>();
     for (const s of firedSignals) {
-      const outcome = s.workUnit.verdict?.resolutionOutcome;
+      const verdict = s.workUnit.verdict;
+      const outcome = verdict?.resolutionOutcome;
       if (!outcome) continue;
+      // A signal that fired *after* the verdict was resolved (e.g. a regrade or spot-check that
+      // completes after a human has already judged the flag) wasn't part of what that judgment
+      // evaluated — counting it here would attribute the outcome to a signal the human never saw.
+      if (verdict.resolvedAt && s.createdAt > verdict.resolvedAt) continue;
       if (!bySignalOutcomes.has(s.key)) bySignalOutcomes.set(s.key, []);
       bySignalOutcomes.get(s.key)!.push(outcome);
     }

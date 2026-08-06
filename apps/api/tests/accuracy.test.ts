@@ -99,6 +99,36 @@ beforeAll(async () => {
       });
     }
   }
+
+  // unit6: a "regrade" signal fired before resolution (should count toward the outcome), plus a
+  // second "regrade" signal that fires only *after* the verdict was already resolved — simulating
+  // a regrade job completing after a human has already judged the flag. The human's outcome was
+  // never evaluated against that later signal, so it must not be attributed to it.
+  const postResolutionId = `accuracy-test-unit-post-resolution-${runId}`;
+  workUnitIds.push(postResolutionId);
+  await prisma.workUnit.create({ data: makeWorkUnit(tenantId, postResolutionId) });
+  await prisma.signal.create({
+    data: { tenantId, workUnitId: postResolutionId, key: "regrade", fired: true, weight: 1, evidence: "pre-resolution" },
+  });
+  const postResolutionVerdict = await prisma.verdict.create({
+    data: { tenantId, workUnitId: postResolutionId, risk: 0.9, recommendation: "re_review" },
+  });
+  const resolvedAt = new Date();
+  await prisma.verdict.update({
+    where: { id: postResolutionVerdict.id },
+    data: { resolvedAt, resolutionOutcome: "false_positive" },
+  });
+  await prisma.signal.create({
+    data: {
+      tenantId,
+      workUnitId: postResolutionId,
+      key: "regrade",
+      fired: true,
+      weight: 1,
+      evidence: "post-resolution",
+      createdAt: new Date(resolvedAt.getTime() + 60_000),
+    },
+  });
 });
 
 afterAll(async () => {
@@ -127,10 +157,10 @@ describe("GET /accuracy", () => {
     const body = res.json();
 
     expect(body.overall).toEqual({
-      resolvedCount: 3,
+      resolvedCount: 4,
       confirmedCount: 2,
-      falsePositiveCount: 1,
-      precision: 2 / 3,
+      falsePositiveCount: 2,
+      precision: 0.5,
     });
 
     // The per-signal breakdown intentionally doesn't re-apply the recommendation != "clear" filter
@@ -149,6 +179,16 @@ describe("GET /accuracy", () => {
       confirmedCount: 1,
       falsePositiveCount: 0,
       precision: 1,
+    });
+
+    // Only the pre-resolution "regrade" signal counts — the one created 60s after resolvedAt is
+    // excluded, so firedCount is 1, not 2.
+    expect(bySignal.get("regrade")).toEqual({
+      key: "regrade",
+      firedCount: 1,
+      confirmedCount: 0,
+      falsePositiveCount: 1,
+      precision: 0,
     });
   });
 
