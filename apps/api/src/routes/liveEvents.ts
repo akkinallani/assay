@@ -21,23 +21,36 @@ export default function liveEventsRoutes(redis: Redis): FastifyPluginAsync {
 
       const sub = redis.duplicate();
       const channel = `quorum:batch:${batchId}`;
-      await sub.subscribe(channel);
-      sub.on("message", (_channel, message) => {
-        reply.raw.write(`data: ${message}\n\n`);
-      });
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
 
-      const snapshot = await computeBatchProgress(fastify.prisma, batchId);
-      reply.raw.write(`data: ${JSON.stringify(snapshot)}\n\n`);
-
-      const heartbeat = setInterval(() => {
-        reply.raw.write(":\n\n");
-      }, 15000);
-
-      request.raw.on("close", () => {
-        clearInterval(heartbeat);
+      // Registered before any of the awaited setup below, which can itself throw (a Redis or
+      // DB blip) — once the reply is hijacked, Fastify's own error handler can no longer send
+      // a response, so without this the duplicated Redis connection below would leak forever
+      // and the client would be left holding an open connection that never receives data.
+      const cleanup = () => {
+        if (heartbeat) clearInterval(heartbeat);
         sub.unsubscribe(channel).catch(() => {});
         sub.quit().catch(() => {});
-      });
+      };
+      request.raw.on("close", cleanup);
+
+      try {
+        await sub.subscribe(channel);
+        sub.on("message", (_channel, message) => {
+          reply.raw.write(`data: ${message}\n\n`);
+        });
+
+        const snapshot = await computeBatchProgress(fastify.prisma, batchId);
+        reply.raw.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+
+        heartbeat = setInterval(() => {
+          reply.raw.write(":\n\n");
+        }, 15000);
+      } catch (err) {
+        request.log.error(err, "live SSE stream setup failed");
+        cleanup();
+        reply.raw.end();
+      }
     });
   };
 }
