@@ -115,6 +115,24 @@ describe("genericJsonAdapter flexibility", () => {
     expect(c1.id).not.toBe(c2.id);
   });
 
+  it("rejects a work unit whose rubric criteria share the same explicit id", () => {
+    // Unlike the auto-generated-id collision case above, these ids are supplied directly by
+    // the uploader (a realistic copy-paste error in a templated JSON export) — previously
+    // passed through completely unchecked, letting coverageSignal/checkRubricCoherence
+    // silently collapse the two criteria onto one and miss a genuinely unaddressed required
+    // criterion (e.g. a safety warning) with zero error anywhere.
+    expect(() =>
+      genericJsonAdapter([
+        baseUnit({
+          rubric: [
+            { id: "step1", text: "Explain the answer", required: true },
+            { id: "step1", text: "Include a mandatory safety warning", required: true },
+          ],
+        }),
+      ])
+    ).toThrow();
+  });
+
   it("does not let a rubric id collision silently mask a missed required criterion in coverage scoring", () => {
     // Reproduces the real end-to-end failure the id collision caused: with the pre-fix id
     // generation, both criteria below normalized to the same id, so scoring only the first one
