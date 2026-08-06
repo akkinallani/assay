@@ -7,7 +7,7 @@ export interface BatchProgressEvent {
   regradeQueued: number;
   regradeProcessing: number;
   regradeDone: number;
-  batchStatus: "pending" | "done";
+  batchStatus: "pending" | "processing" | "done";
 }
 
 export interface UnitStatusEvent {
