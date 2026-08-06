@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useParams, Link } from "react-router-dom";
 import type { BatchProgressEvent, QuorumLiveEvent } from "@quorum/schema";
 import { LiveRegradePanel, type UnitLiveState } from "../components/LiveRegradePanel.js";
+import { api } from "../api/client.js";
 
 function applyEvent(
   units: Map<string, UnitLiveState>,
@@ -44,12 +45,14 @@ export function LiveRun() {
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState(false);
   const sourceRef = useRef<EventSource | null>(null);
+  const authCheckedRef = useRef(false);
 
   useEffect(() => {
     if (!batchId) return;
 
     const source = new EventSource(`/api/batches/${batchId}/live`);
     sourceRef.current = source;
+    authCheckedRef.current = false;
 
     source.onmessage = (e) => {
       const event = JSON.parse(e.data) as QuorumLiveEvent;
@@ -62,8 +65,23 @@ export function LiveRun() {
         setUnits((prev) => applyEvent(prev, event));
       }
     };
-    source.onopen = () => setConnectionError(false);
-    source.onerror = () => setConnectionError(true);
+    source.onopen = () => {
+      setConnectionError(false);
+      authCheckedRef.current = false;
+    };
+    source.onerror = () => {
+      setConnectionError(true);
+      // EventSource never exposes the failing response's status code, so a session that went
+      // invalid mid-stream (TTL expiry, logout elsewhere) looks identical to a network blip —
+      // the browser just retries forever. Piggyback a lightweight authenticated call so a real
+      // 401 routes through the same unauthorizedHandler api.get/post already trigger, clearing
+      // the stale signed-in user and letting RequireAuth redirect to /login. Guarded to once per
+      // disconnect episode (reset on the next successful open) so retries don't spam the check.
+      if (!authCheckedRef.current) {
+        authCheckedRef.current = true;
+        api.me().catch(() => {});
+      }
+    };
 
     return () => {
       source.close();
