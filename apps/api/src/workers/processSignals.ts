@@ -140,8 +140,16 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
 
       const spotCheckCandidates = sampleUpTo(consistencyClearUnits, CONSISTENCY_SPOT_CHECK_CAP);
       for (const unit of spotCheckCandidates) {
-        const audit = await checkConsistencyWithLLM(unit, batchId);
-        if (audit.consistent) continue;
+        // This spot-check is a supplementary audit on top of the free heuristic (see the cap
+        // comment above), not a required step — a connection failure or other non-parse error
+        // reaching the LLM backend here must not abort the whole batch (and everything after
+        // it: the remaining spot-check candidates, and — before refreshBatchProgress existed
+        // to run unconditionally — leave status stuck "pending" forever). Skip and move on.
+        const audit = await checkConsistencyWithLLM(unit, batchId).catch((err) => {
+          console.warn(`Consistency spot-check failed for work unit ${unit.id}, skipping:`, err);
+          return null;
+        });
+        if (!audit || audit.consistent) continue;
 
         const existingSignals = await prisma.signal.findMany({ where: { workUnitId: unit.id } });
         const otherSignals = existingSignals
