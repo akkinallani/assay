@@ -11,6 +11,11 @@ export interface MessageParam {
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
 
+// Generous enough to cover a slow local-model generation under normal load, but bounded so a
+// backend that accepts the connection and then never responds (model swap thrashing, GPU/CPU
+// exhaustion, a worker crash mid-generation) can't hang the calling job forever.
+export const LLM_CALL_TIMEOUT_MS = 120_000;
+
 // Node's fetch() reports connection failures as `TypeError: fetch failed`, with the actual
 // cause (e.g. ECONNREFUSED) nested in `err.cause`, never in `err.message` itself.
 function isConnRefusedError(err: unknown): boolean {
@@ -21,6 +26,12 @@ function isConnRefusedError(err: unknown): boolean {
     return (cause as { code?: unknown }).code === "ECONNREFUSED";
   }
   return false;
+}
+
+// AbortSignal.timeout() rejects fetch() with a DOMException named "TimeoutError" — verified
+// directly against Node's native fetch (not documentation), since implementations vary.
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.name === "TimeoutError";
 }
 
 function toOllamaTools(tools?: LlmTool[]) {
@@ -61,6 +72,7 @@ export async function llmCall(params: {
           format: params.jsonMode ? "json" : undefined,
           options: { num_predict: params.maxTokens ?? 4096 },
         }),
+        signal: AbortSignal.timeout(LLM_CALL_TIMEOUT_MS),
       });
 
       if (!response.ok) {
@@ -90,7 +102,7 @@ export async function llmCall(params: {
 
       return { content: data.message.content, inputTokens, outputTokens, costUsd: 0 };
     } catch (err: unknown) {
-      if (isConnRefusedError(err) && attempt < maxAttempts) {
+      if ((isConnRefusedError(err) || isTimeoutError(err)) && attempt < maxAttempts) {
         await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
         continue;
       }
