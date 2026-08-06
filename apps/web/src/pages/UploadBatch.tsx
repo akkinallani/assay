@@ -25,6 +25,15 @@ export function UploadBatch() {
       if (e instanceof ApiError && e.code === "duplicate_work_unit_id") {
         setDuplicateError(e.message);
         setPendingUnits(units);
+      } else if (e instanceof ApiError && e.code === "validation_failed" && Array.isArray(e.issues)) {
+        // The server's per-field zod errors are far more actionable than the generic message
+        // above them — render them the same way the client-side pre-check's issues are rendered.
+        setIssues(
+          e.issues.map((issue) => {
+            const { path, message } = issue as { path?: string; message?: string };
+            return path ? `${path}: ${message}` : (message ?? "Validation failed");
+          })
+        );
       } else {
         setError((e as Error).message);
       }

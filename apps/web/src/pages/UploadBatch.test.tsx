@@ -55,4 +55,21 @@ describe("UploadBatch", () => {
     const retriedIds = retriedUnits.map((u) => u.id);
     expect(new Set(retriedIds).size).toBe(retriedIds.length);
   });
+
+  it("shows the server's per-field validation issues instead of a generic message", async () => {
+    vi.mocked(api.createBatch).mockRejectedValueOnce(
+      new ApiError("Validation failed", "validation_failed", [
+        { path: "[0].task", message: "Required" },
+        { path: "[1].grade.score", message: "Expected number, received string" },
+      ])
+    );
+
+    await uploadFile([
+      { id: "unit-1", rubric: [] },
+      { id: "unit-2", task: "t", grade: { score: "nine" } },
+    ]);
+
+    await waitFor(() => expect(screen.getByText("[0].task: Required")).toBeInTheDocument());
+    expect(screen.getByText("[1].grade.score: Expected number, received string")).toBeInTheDocument();
+  });
 });
