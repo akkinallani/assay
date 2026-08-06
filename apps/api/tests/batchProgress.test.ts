@@ -12,21 +12,30 @@ const batchId = `progress-test-batch-${runId}`;
 const flaggedUnitId = `progress-test-unit-flagged-${runId}`;
 const clearUnitId = `progress-test-unit-clear-${runId}`;
 
-async function waitForMessage(channel: string, timeoutMs = 5000): Promise<string> {
+// Subscribes and resolves once the subscription is actually registered with Redis, returning
+// a promise for the next message. Callers must await the returned `ready` before triggering
+// whatever will publish — otherwise the publish can race ahead of `sub.subscribe()`'s network
+// round-trip and the message is missed, timing out for reasons unrelated to the code under test.
+function subscribeTo(channel: string, timeoutMs = 5000): { ready: Promise<void>; next: Promise<string>; close: () => Promise<void> } {
   const sub = redis.duplicate();
-  await sub.subscribe(channel);
-  try {
-    return await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Timed out waiting for a pub/sub message")), timeoutMs);
-      sub.on("message", (_ch, message) => {
-        clearTimeout(timer);
-        resolve(message);
-      });
-    });
-  } finally {
+  let resolveMessage: (message: string) => void;
+  let rejectMessage: (err: Error) => void;
+  const next = new Promise<string>((resolve, reject) => {
+    resolveMessage = resolve;
+    rejectMessage = reject;
+  });
+  sub.on("message", (_ch, message) => {
+    clearTimeout(timer);
+    resolveMessage(message);
+  });
+  const timer = setTimeout(() => rejectMessage(new Error("Timed out waiting for a pub/sub message")), timeoutMs);
+  const ready = sub.subscribe(channel).then(() => undefined);
+  const close = async () => {
+    clearTimeout(timer);
     await sub.unsubscribe(channel).catch(() => {});
     await sub.quit().catch(() => {});
-  }
+  };
+  return { ready, next, close };
 }
 
 beforeAll(async () => {
@@ -69,22 +78,25 @@ afterAll(async () => {
 describe("refreshBatchProgress", () => {
   it("does not mark the batch done while a flagged item's regrade is still outstanding, and publishes the live snapshot", async () => {
     const channel = `quorum:batch:${batchId}`;
-    const [progress, published] = await Promise.all([
-      refreshBatchProgress(prisma, redis, batchId),
-      waitForMessage(channel),
-    ]);
+    const sub = subscribeTo(channel);
+    await sub.ready;
+    try {
+      const [progress, published] = await Promise.all([refreshBatchProgress(prisma, redis, batchId), sub.next]);
 
-    expect(progress.batchStatus).toBe("pending");
-    expect(progress.flaggedForRegrade).toBe(1);
-    expect(progress.regradeQueued).toBe(1);
-    expect(progress.regradeDone).toBe(0);
+      expect(progress.batchStatus).toBe("pending");
+      expect(progress.flaggedForRegrade).toBe(1);
+      expect(progress.regradeQueued).toBe(1);
+      expect(progress.regradeDone).toBe(0);
 
-    const parsed = JSON.parse(published);
-    expect(parsed.type).toBe("batch_progress");
-    expect(parsed.batchStatus).toBe("pending");
+      const parsed = JSON.parse(published);
+      expect(parsed.type).toBe("batch_progress");
+      expect(parsed.batchStatus).toBe("pending");
 
-    const batch = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
-    expect(batch.status).toBe("pending");
+      const batch = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
+      expect(batch.status).toBe("pending");
+    } finally {
+      await sub.close();
+    }
   });
 
   it("marks the batch done once every flagged item has a regrade signal, matching what regradeWorker writes on completion", async () => {
