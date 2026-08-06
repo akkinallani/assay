@@ -135,7 +135,11 @@ describe("auth", () => {
       payload: { email: emailLockout, password },
     });
     expect(lockedOut.statusCode).toBe(429);
-  });
+    // 7 sequential real bcrypt(cost 12) ops (1 signup hash + 6 login compares) routinely take
+    // ~2s locally but can exceed vitest's 5000ms default under CI's shared-runner CPU
+    // contention — bumped rather than reworked, since the lockout behavior itself needs no
+    // change, only headroom for its own real work (same pattern as liveEventsSetupFailure.test.ts).
+  }, 15000);
 
   it("normalizes email case at signup, so a different-case duplicate is rejected as taken", async () => {
     const mixedCaseEmail = emailCase.replace(/^./, (c) => c.toUpperCase());
