@@ -62,6 +62,7 @@ export function LiveRun() {
         setUnits((prev) => applyEvent(prev, event));
       }
     };
+    source.onopen = () => setConnectionError(false);
     source.onerror = () => setConnectionError(true);
 
     return () => {
