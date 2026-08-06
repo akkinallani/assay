@@ -1,8 +1,14 @@
 import type { WorkUnit } from "@quorum/schema";
 import type { BatchContext, Signal } from "./types.js";
 
+// Normalizes whitespace/case so trivial formatting differences don't split an otherwise-identical
+// task into separate cohorts — but keeps the FULL text. Truncating to a fixed prefix (the prior
+// approach) merges any two structurally different tasks that merely share a long common preamble
+// (extremely plausible for templated prompts, e.g. shared boilerplate instructions with different
+// task-specific content appended after it) into one cohort, diluting outlier detection for both —
+// the same bug class already fixed for rubric-criterion auto-ids (see normalize.ts's slugify).
 export function taskTemplate(task: string): string {
-  return task.slice(0, 60).toLowerCase().replace(/\s+/g, " ").trim();
+  return task.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 export function cohortKey(unit: WorkUnit): string {
