@@ -100,9 +100,15 @@ describe("processSignals worker", () => {
 
     const consistency = signals.find((s) => s.key === "consistency");
     expect(consistency?.fired).toBe(true);
+  });
 
+  it("leaves the batch status \"pending\" while a flagged item's regrade is still outstanding", async () => {
+    // The fixture's fired consistency signal (weight 0.5) puts risk at 0.5, above the 0.4
+    // regrade threshold, so both units get queued for regrade — no regradeWorker consumes
+    // that queue in this test, so the batch must not be marked "done" until one does.
+    await pollUntil(() => prisma.verdict.findUnique({ where: { workUnitId } }));
     const batch = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
-    expect(batch.status).toBe("done");
+    expect(batch.status).toBe("pending");
   });
 
   it("accumulates domainStats per-domain across multiple items for the same grader, not just the first", async () => {

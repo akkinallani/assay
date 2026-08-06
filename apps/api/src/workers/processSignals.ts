@@ -10,7 +10,7 @@ import {
 } from "@quorum/engine";
 import type { BatchContext } from "@quorum/engine";
 import type { Redis } from "ioredis";
-import { publishEvent, computeBatchProgress } from "../events/bus.js";
+import { refreshBatchProgress } from "../events/bus.js";
 import { checkConsistencyWithLLM } from "../llm/tools/consistencyCheck.js";
 
 export const signalQueue = (redis: Redis) =>
@@ -177,12 +177,9 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
         }
       }
 
-      await prisma.batch.update({
-        where: { id: batchId },
-        data: { status: "done" },
-      });
-
-      await publishEvent(redis, batchId, await computeBatchProgress(prisma, batchId));
+      // Only actually flips status to "done" if nothing was flagged for regrade — a batch
+      // with flagged items stays "pending" until regradeWorker's completions catch it up.
+      await refreshBatchProgress(prisma, redis, batchId);
     },
     { connection: redis, concurrency: 2 }
   );

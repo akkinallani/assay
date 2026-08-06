@@ -9,7 +9,7 @@ import { executeCode, extractCodeBlock } from "../llm/tools/codeExecutor.js";
 import { verifyMathClaim } from "../llm/tools/mathVerify.js";
 import { retrieveContext } from "../llm/tools/contextRetrieval.js";
 import { checkFacts } from "../llm/tools/factCheck.js";
-import { publishEvent } from "../events/bus.js";
+import { publishEvent, refreshBatchProgress } from "../events/bus.js";
 import type { Redis } from "ioredis";
 
 export const regradeQueue = (redis: Redis) =>
@@ -338,6 +338,14 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
         throw err;
       } finally {
         currentJob = null;
+        // Best-effort: republishes fresh batch stats (and flips status to "done" once every
+        // flagged item is accounted for) after every outcome, success or failure, so the live
+        // view's counts and completion banner actually update instead of freezing at whatever
+        // they were when process-signals finished. Swallowed so a refresh failure here can't
+        // mask the real job outcome above.
+        await refreshBatchProgress(prisma, redis, batchId).catch((err) => {
+          console.warn(`Failed to refresh batch progress for ${batchId}:`, err);
+        });
       }
     },
     { connection: redis, concurrency: 1 }
