@@ -49,9 +49,15 @@ function slugify(text: string): string {
 }
 
 export function normalizeRubricItem(raw: unknown, index: number): Record<string, unknown> {
+  // Auto-generated ids always include the item's index, since `slugify` truncates to 40 chars —
+  // two criteria that merely share a long common prefix (common in templated rubric checklists)
+  // would otherwise collapse onto the same id and silently corrupt coverage/coherence checks
+  // that key criteria by id. An explicitly-provided id/key/criterionId is never touched.
+  const autoId = (text: string) => `${slugify(text) || "criterion"}-${index + 1}`;
+
   // A plain string criterion — very common in simpler exports.
   if (typeof raw === "string") {
-    return { id: slugify(raw) || `criterion-${index + 1}`, text: raw, required: true };
+    return { id: autoId(raw), text: raw, required: true };
   }
 
   if (!raw || typeof raw !== "object") {
@@ -61,7 +67,7 @@ export function normalizeRubricItem(raw: unknown, index: number): Record<string,
   const r = raw as Record<string, unknown>;
   const text =
     firstNonEmptyString(r.text, r.description, r.criterion, r.name, r.label) ?? `Criterion ${index + 1}`;
-  const id = firstNonEmptyString(r.id, r.key, r.criterionId) ?? (slugify(text) || `criterion-${index + 1}`);
+  const id = firstNonEmptyString(r.id, r.key, r.criterionId) ?? autoId(text);
   const required = firstBoolean(r.required, r.mandatory) ?? true;
 
   return { ...r, id, text, required };
