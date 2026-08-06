@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Worker, Queue } from "bullmq";
 import type { PrismaClient } from "@prisma/client";
 import type { WorkUnit } from "@quorum/schema";
@@ -31,6 +32,42 @@ function sampleUpTo<T>(arr: T[], n: number): T[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy.slice(0, n);
+}
+
+// Increments a grader's itemsSeen/flagCount and merges this item's domain into their
+// domainStats JSON blob, atomically. This worker runs with `concurrency: 2`, so two jobs for
+// the same grader (a routine occurrence, not an edge case — any grader with more than one batch
+// in flight at once) can process concurrently; a read-then-write JS-level JSON merge (the prior
+// approach) lets the second write clobber the first's domainStats update, silently dropping a
+// whole domain's stats. A single INSERT ... ON CONFLICT DO UPDATE is atomic per row in Postgres,
+// closing the race — itemsSeen/flagCount already used Prisma's atomic `{ increment }` on the
+// non-JSON fields; this brings domainStats to the same guarantee.
+export async function upsertGraderDomainStat(
+  prisma: PrismaClient,
+  tenantId: string,
+  graderId: string,
+  domain: string,
+  fired: boolean
+): Promise<void> {
+  const id = randomUUID();
+  const flagIncrement = fired ? 1 : 0;
+  await prisma.$executeRaw`
+    INSERT INTO "GraderStat" ("id", "tenantId", "graderId", "itemsSeen", "flagCount", "agreementCount", "regradeCount", "domainStats", "updatedAt")
+    VALUES (${id}, ${tenantId}, ${graderId}, 1, ${flagIncrement}, 0, 0, jsonb_build_object(${domain}, jsonb_build_object('itemsSeen', 1, 'flagCount', ${flagIncrement})), now())
+    ON CONFLICT ("tenantId", "graderId") DO UPDATE SET
+      "itemsSeen" = "GraderStat"."itemsSeen" + 1,
+      "flagCount" = "GraderStat"."flagCount" + ${flagIncrement},
+      "domainStats" = jsonb_set(
+        "GraderStat"."domainStats",
+        ARRAY[${domain}],
+        jsonb_build_object(
+          'itemsSeen', COALESCE(("GraderStat"."domainStats"->${domain}->>'itemsSeen')::int, 0) + 1,
+          'flagCount', COALESCE(("GraderStat"."domainStats"->${domain}->>'flagCount')::int, 0) + ${flagIncrement}
+        ),
+        true
+      ),
+      "updatedAt" = now()
+  `;
 }
 
 export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQueue: Queue) {
@@ -105,39 +142,7 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
 
         const anyFired = signals.some((s) => s.fired);
 
-        // Merge this item's domain into the grader's existing domainStats — the upsert's `create`
-        // branch only fires once per grader, so any per-domain accumulation has to happen here,
-        // not inside the upsert data itself.
-        const priorStat = await prisma.graderStat.findUnique({
-          where: { tenantId_graderId: { tenantId: unit.tenantId, graderId: unit.graderId } },
-          select: { domainStats: true },
-        });
-        const existingDomainStats =
-          (priorStat?.domainStats as Record<string, { itemsSeen: number; flagCount: number }> | null) ?? {};
-        const priorDomainStat = existingDomainStats[unit.domain] ?? { itemsSeen: 0, flagCount: 0 };
-        const nextDomainStats = {
-          ...existingDomainStats,
-          [unit.domain]: {
-            itemsSeen: priorDomainStat.itemsSeen + 1,
-            flagCount: priorDomainStat.flagCount + (anyFired ? 1 : 0),
-          },
-        };
-
-        await prisma.graderStat.upsert({
-          where: { tenantId_graderId: { tenantId: unit.tenantId, graderId: unit.graderId } },
-          create: {
-            tenantId: unit.tenantId,
-            graderId: unit.graderId,
-            itemsSeen: 1,
-            flagCount: anyFired ? 1 : 0,
-            domainStats: nextDomainStats,
-          },
-          update: {
-            itemsSeen: { increment: 1 },
-            flagCount: { increment: anyFired ? 1 : 0 },
-            domainStats: nextDomainStats,
-          },
-        });
+        await upsertGraderDomainStat(prisma, unit.tenantId, unit.graderId, unit.domain, anyFired);
 
         if (verdict.risk >= 0.4) {
           await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
