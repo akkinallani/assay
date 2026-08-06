@@ -32,3 +32,26 @@ export async function computeBatchProgress(prisma: PrismaClient, batchId: string
     batchStatus: batch.status as "pending" | "done",
   };
 }
+
+// Recomputes a batch's progress, persists status "done" once every unit is scored and no
+// regrade is queued or in flight, and republishes the fresh snapshot so any connected SSE
+// client's stats and completion banner update in real time (not just once, at ingest time).
+export async function refreshBatchProgress(
+  prisma: PrismaClient,
+  redis: Redis,
+  batchId: string
+): Promise<BatchProgressEvent> {
+  const progress = await computeBatchProgress(prisma, batchId);
+  const trulyDone =
+    progress.scoredUnits === progress.totalUnits &&
+    progress.regradeQueued === 0 &&
+    progress.regradeProcessing === 0;
+
+  if (trulyDone && progress.batchStatus !== "done") {
+    await prisma.batch.update({ where: { id: batchId }, data: { status: "done" } });
+    progress.batchStatus = "done";
+  }
+
+  await publishEvent(redis, batchId, progress);
+  return progress;
+}
