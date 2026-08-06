@@ -146,6 +146,21 @@ describe("verdict resolution", () => {
     expect(stored.resolutionOutcome).toBe("confirmed_issue");
   });
 
+  it("409s resolving an already-resolved verdict, leaving the original resolution untouched", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: `/verdicts/${verdictId}/resolve`,
+      headers: { cookie: cookieA, ...CSRF_HEADERS },
+      payload: { outcome: "false_positive", note: "a second reviewer's overwrite attempt" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe("already_resolved");
+
+    const stored = await prisma.verdict.findUniqueOrThrow({ where: { id: verdictId } });
+    expect(stored.resolutionOutcome).toBe("confirmed_issue");
+    expect(stored.resolutionNote).toBe("Confirmed the grade was too generous, coaching the grader.");
+  });
+
   it("reopens a resolved verdict, clearing all resolution fields", async () => {
     const res = await app.inject({
       method: "POST",

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { resolveVerdictSchema } from "@quorum/schema";
-import { badRequest, notFound } from "../errors.js";
+import { badRequest, conflict, notFound } from "../errors.js";
 
 function serialize(verdict: {
   id: string;
@@ -46,14 +46,23 @@ const verdictsRoutes: FastifyPluginAsync = async (fastify) => {
     });
     if (!existing) throw notFound("verdict_not_found");
 
-    const updated = await fastify.prisma.verdict.update({
-      where: { id: verdictId },
+    // Scoped to the still-unresolved case so two concurrent resolves (e.g. two reviewers) can't
+    // both pass a read-then-write check and silently clobber each other's outcome.
+    const { count } = await fastify.prisma.verdict.updateMany({
+      where: { id: verdictId, resolvedAt: null },
       data: {
         resolvedAt: new Date(),
         resolvedByUserId: request.userId,
         resolutionNote: parsed.data.note ?? null,
         resolutionOutcome: parsed.data.outcome,
       },
+    });
+    if (count === 0) {
+      throw conflict("already_resolved", "This item was already resolved. Reopen it first to change the outcome.");
+    }
+
+    const updated = await fastify.prisma.verdict.findUniqueOrThrow({
+      where: { id: verdictId },
       include: { resolvedBy: { select: { email: true } } },
     });
 
