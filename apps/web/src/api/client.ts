@@ -94,9 +94,21 @@ export class ApiError extends Error {
   }
 }
 
+// Lets AuthContext know a request came back 401'd (session expired/invalidated
+// server-side) so it can clear the stale `user` state and let RequireAuth redirect
+// to /login — every page's own error handling only shows the failure inline, with
+// no path back to a working screen otherwise.
+type UnauthorizedHandler = () => void;
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  unauthorizedHandler = handler;
+}
+
 async function throwForError(res: Response): Promise<never> {
   const payload = await res.json().catch(() => ({}) as Record<string, unknown>);
   const message = (payload.message as string) ?? `${res.status} ${JSON.stringify(payload)}`;
+  if (res.status === 401) unauthorizedHandler?.();
   throw new ApiError(message, payload.error as string | undefined, payload.issues);
 }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, ApiError } from "./client.js";
+import { api, ApiError, setUnauthorizedHandler } from "./client.js";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -8,6 +8,7 @@ function jsonResponse(body: unknown, status = 200) {
 describe("api client", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    setUnauthorizedHandler(null);
   });
 
   it("sends credentials and the CSRF header on every request", async () => {
@@ -54,5 +55,27 @@ describe("api client", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect(init.method).toBe("POST");
     expect(init.body).toBe(JSON.stringify({}));
+  });
+
+  it("invokes the registered unauthorized handler on a 401 response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: "unauthorized", message: "Unauthorized" }, 401));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+
+    await expect(api.getBatches()).rejects.toBeInstanceOf(ApiError);
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not invoke the unauthorized handler on a non-401 error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ error: "not_found", message: "Not found" }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+
+    await expect(api.getBatches()).rejects.toBeInstanceOf(ApiError);
+
+    expect(handler).not.toHaveBeenCalled();
   });
 });
