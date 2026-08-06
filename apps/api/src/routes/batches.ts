@@ -61,7 +61,7 @@ export default function batchRoutes(redis: Redis): FastifyPluginAsync {
       }
 
       const queue = signalQueue(redis);
-      await queue.add("process-signals", { batchId, tenantId });
+      await queue.add("process-signals", { batchId, tenantId }, { attempts: 3 });
 
       return reply.code(201).send({ batchId, unitCount: units.length });
     });
