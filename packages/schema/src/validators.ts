@@ -33,7 +33,16 @@ export const workUnitSchema = z.object({
   batchId: z.string().min(1),
   domain: z.enum(["math", "code", "law", "safety", "general"]),
   task: z.string().min(1),
-  rubric: z.array(rubricCriterionSchema).min(1),
+  rubric: z
+    .array(rubricCriterionSchema)
+    .min(1)
+    // coverageSignal (packages/engine) and checkRubricCoherence both key criteria by id
+    // (Set/Map lookups) and silently collapse two criteria sharing an id onto one — scoring
+    // either one makes both read as "addressed", even when a genuinely-unaddressed required
+    // criterion (e.g. a safety warning) is the one that got shadowed.
+    .refine((criteria) => new Set(criteria.map((c) => c.id)).size === criteria.length, {
+      message: "Rubric criterion ids must be unique within a work unit",
+    }),
   modelOutput: z.string().min(1),
   attachments: z.array(attachmentSchema).optional(),
   grade: gradeSchema,
