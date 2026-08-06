@@ -45,8 +45,11 @@ export function VerdictQueue() {
   const spotCheck = verdicts.filter((v) => v.recommendation === "spot_check");
   const clear = verdicts.filter((v) => v.recommendation === "clear");
 
-  const pending = verdicts.filter((v) => !v.resolvedAt);
-  const resolved = verdicts.filter((v) => v.resolvedAt);
+  // "clear" items were never flagged and have no user-facing resolve workflow — excluding
+  // them from both queue tabs keeps "Needs Review" limited to items that actually need it.
+  const reviewable = verdicts.filter((v) => v.recommendation !== "clear");
+  const pending = reviewable.filter((v) => !v.resolvedAt);
+  const resolved = reviewable.filter((v) => v.resolvedAt);
   const displayed = tab === "pending" ? pending : resolved;
 
   return (
