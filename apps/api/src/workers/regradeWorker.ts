@@ -181,6 +181,19 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
       currentJob = { batchId, workUnitId };
 
       try {
+        // The job is enqueued with `attempts: 3` (see processSignals.ts). If a transient failure
+        // (e.g. a Redis blip in one of the publishEvent calls below) throws *after* the DB
+        // transaction further down has already committed the "regrade" signal and incremented
+        // GraderStat, BullMQ retries the whole handler from scratch — re-running the expensive LLM
+        // grading loop and writing a second, duplicate signal row plus a second increment. Bail out
+        // early if this unit was already regraded so a retry can't double-write.
+        const alreadyRegraded = await prisma.signal.findFirst({ where: { workUnitId, key: "regrade" } });
+        if (alreadyRegraded) {
+          console.warn(`Skipping regrade for ${workUnitId}: a "regrade" signal already exists (retried job)`);
+          await publishEvent(redis, batchId, { type: "unit_status", batchId, workUnitId, status: "graded" });
+          return;
+        }
+
         const dbUnit = await prisma.workUnit.findUniqueOrThrow({ where: { id: workUnitId } });
         const unit: WorkUnit = {
           ...dbUnit,
