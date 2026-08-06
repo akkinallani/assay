@@ -179,6 +179,7 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
     async (job) => {
       const { workUnitId, batchId } = job.data as { workUnitId: string; batchId: string };
       currentJob = { batchId, workUnitId };
+      let tenantId: string | undefined;
 
       try {
         // The job is enqueued with `attempts: 3` (see processSignals.ts). If a transient failure
@@ -195,6 +196,7 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
         }
 
         const dbUnit = await prisma.workUnit.findUniqueOrThrow({ where: { id: workUnitId } });
+        tenantId = dbUnit.tenantId;
         const unit: WorkUnit = {
           ...dbUnit,
           rubric: dbUnit.rubric as unknown as WorkUnit["rubric"],
@@ -273,6 +275,23 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
               message: "Could not parse a final grade from the agent's response",
             });
             await publishEvent(redis, batchId, { type: "unit_status", batchId, workUnitId, status: "error" });
+            // This job completes successfully (no BullMQ retry) but never wrote a "regrade"
+            // signal — computeBatchProgress's regradeDone count would wait for one forever,
+            // permanently stranding the batch at "pending". Write a fired:false marker so the
+            // unit counts as "accounted for" without affecting risk scoring (scoreSignals only
+            // sums fired signals) or the accuracy breakdown (which only counts fired ones too).
+            // The unit's original verdict/risk is left untouched — it still genuinely needs a
+            // human look, just without the agent's second opinion.
+            await prisma.signal.create({
+              data: {
+                tenantId: unit.tenantId,
+                workUnitId,
+                key: "regrade",
+                fired: false,
+                weight: 0,
+                evidence: "Agent regrade could not produce a parseable final grade — needs manual review",
+              },
+            });
             return;
           }
           throw err;
@@ -348,6 +367,33 @@ export function createRegradeWorker(prisma: PrismaClient, redis: Redis) {
           message: err instanceof Error ? err.message : String(err),
         });
         await publishEvent(redis, batchId, { type: "unit_status", batchId, workUnitId, status: "error" });
+
+        // BullMQ retries this job up to job.opts.attempts times (see processSignals.ts). Only
+        // on the last allowed attempt — no more retries coming — write the same fired:false
+        // terminal marker as the LlmParseError case above, so a unit that fails every attempt
+        // (e.g. the LLM backend is down) doesn't strand the batch at "pending" forever the same
+        // way an unparseable grade would. job.attemptsMade only counts *prior* failures (this
+        // attempt isn't recorded until after this handler returns/throws), so it equals
+        // maxAttempts - 1 on the final attempt. Skip if tenantId was never resolved (the unit
+        // itself failed to load) or a "regrade" signal already exists (the real transaction
+        // committed before a later step in *this* attempt threw — already handled correctly).
+        const maxAttempts = job.opts.attempts ?? 1;
+        if (tenantId && job.attemptsMade + 1 >= maxAttempts) {
+          const alreadyRecorded = await prisma.signal.findFirst({ where: { workUnitId, key: "regrade" } });
+          if (!alreadyRecorded) {
+            await prisma.signal.create({
+              data: {
+                tenantId,
+                workUnitId,
+                key: "regrade",
+                fired: false,
+                weight: 0,
+                evidence: "Agent regrade failed on every retry — needs manual review",
+              },
+            });
+          }
+        }
+
         throw err;
       } finally {
         currentJob = null;
