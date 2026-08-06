@@ -105,7 +105,7 @@ describe("processSignals worker — double regrade queuing", () => {
     expect(regradeQueueMock.add).toHaveBeenCalledWith(
       "regrade-item",
       { workUnitId, batchId },
-      { attempts: 3 }
+      { attempts: 3, backoff: { type: "exponential", delay: 1000 } }
     );
   });
 });
