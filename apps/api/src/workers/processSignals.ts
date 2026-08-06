@@ -55,6 +55,12 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
       const cohortStats = computeCohortStats(units);
       const ctx: BatchContext = { batchId, cohortStats };
       const consistencyClearUnits: WorkUnit[] = [];
+      // A unit already queued for regrade below (from its heuristic signals) must not be queued
+      // again if the LLM spot-check loop later flips its consistency signal too — regradeWorker
+      // has no dedup of its own (it always creates a fresh "regrade" signal row per job), so two
+      // jobs for the same unit would double the LLM cost and double-count the "regrade" signal's
+      // weight in the final risk score.
+      const queuedForRegrade = new Set<string>();
 
       for (const unit of units) {
         const signals = [
@@ -135,6 +141,7 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
 
         if (verdict.risk >= 0.4) {
           await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
+          queuedForRegrade.add(unit.id);
         }
       }
 
@@ -180,8 +187,9 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
           }),
         ]);
 
-        if (updatedVerdict.risk >= 0.4) {
+        if (updatedVerdict.risk >= 0.4 && !queuedForRegrade.has(unit.id)) {
           await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
+          queuedForRegrade.add(unit.id);
         }
       }
 
