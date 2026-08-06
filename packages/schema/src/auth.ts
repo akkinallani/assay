@@ -6,9 +6,18 @@ import { z } from "zod";
 // "Foo@x.com" and "foo@x.com" silently become two different accounts.
 const emailSchema = z.string().trim().toLowerCase().email();
 
+// bcrypt (and bcryptjs, which we use) silently truncates its input at 72 bytes — anything past
+// that is ignored both when hashing and when comparing, so two passwords sharing the same first
+// 72 bytes are indistinguishable to it. Capping input here turns that silent truncation into an
+// explicit validation error instead of a false sense of security.
+const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .refine((value) => new TextEncoder().encode(value).length <= 72, "Password must be at most 72 bytes");
+
 export const signupSchema = z.object({
   email: emailSchema,
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: passwordSchema,
   tenantName: z.string().min(1, "Organization name is required"),
 });
 
@@ -22,7 +31,7 @@ export const inviteTeammateSchema = z.object({
 });
 
 export const acceptInviteSchema = z.object({
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: passwordSchema,
 });
 
 export type SignupInput = z.infer<typeof signupSchema>;
