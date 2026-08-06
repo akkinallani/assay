@@ -80,6 +80,16 @@ describe("auth", () => {
     expect(res.statusCode).toBe(409);
   });
 
+  it("rejects a signup password over bcrypt's 72-byte limit instead of silently truncating it", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/signup",
+      headers: CSRF_HEADERS,
+      payload: { email: `too-long-pw-${runId}@example.com`, password: "a".repeat(73), tenantName: `Tenant Long ${runId}` },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it("logs in with correct credentials and rejects wrong password", async () => {
     // Uses a different case than the email was signed up with — also covers that login is
     // case-insensitive, without spending a separate call against the login rate limiter below.
