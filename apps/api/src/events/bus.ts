@@ -29,7 +29,7 @@ export async function computeBatchProgress(prisma: PrismaClient, batchId: string
     regradeQueued,
     regradeProcessing,
     regradeDone,
-    batchStatus: batch.status as "pending" | "done",
+    batchStatus: batch.status as "pending" | "processing" | "done",
   };
 }
 

@@ -80,6 +80,13 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
     async (job) => {
       const { batchId, tenantId } = job.data as { batchId: string; tenantId: string };
 
+      // Flips the batch out of "pending" the moment work actually starts, so the batch list
+      // (a plain snapshot fetch, not the live SSE view) can tell "queued, nothing has happened
+      // yet" apart from "actively running" instead of showing the same static badge for both.
+      // Scoped to the "pending" -> "processing" transition only, so a retry (job already past
+      // this point) or a job racing a since-completed run leaves the status alone.
+      await prisma.batch.updateMany({ where: { id: batchId, status: "pending" }, data: { status: "processing" } });
+
       // This job now retries on failure (see `{ attempts: 3 }` where it's enqueued in
       // batches.ts) so a transient Postgres/Redis blip doesn't strand the batch at "pending"
       // forever. A retry re-invokes this handler from the top, so any unit whose Signal/Verdict/
