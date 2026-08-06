@@ -18,6 +18,13 @@ const invitesRoutes: FastifyPluginAsync = async (fastify) => {
     const existingUser = await fastify.prisma.user.findUnique({ where: { email } });
     if (existingUser) throw conflict("email_taken", "An account with that email already exists");
 
+    const existingInvite = await fastify.prisma.invite.findFirst({
+      where: { tenantId: request.tenantId, email, acceptedAt: null, expiresAt: { gt: new Date() } },
+    });
+    if (existingInvite) {
+      throw conflict("invite_pending", "A pending invite already exists for that email");
+    }
+
     const token = crypto.randomBytes(24).toString("hex");
     const invite = await fastify.prisma.invite.create({
       data: {
