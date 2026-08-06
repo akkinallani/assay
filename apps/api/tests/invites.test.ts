@@ -141,4 +141,51 @@ describe("invites", () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it("rejects a second invite to an email that already has a pending invite", async () => {
+    const email = `dup-${inviteeEmail}`;
+    const first = await app.inject({
+      method: "POST",
+      url: "/invites",
+      headers: { cookie: ownerCookie, ...CSRF_HEADERS },
+      payload: { email },
+    });
+    expect(first.statusCode).toBe(201);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/invites",
+      headers: { cookie: ownerCookie, ...CSRF_HEADERS },
+      payload: { email },
+    });
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error).toBe("invite_pending");
+
+    const list = await app.inject({ method: "GET", url: "/invites", headers: { cookie: ownerCookie } });
+    expect(list.json().filter((i: { email: string }) => i.email === email)).toHaveLength(1);
+  });
+
+  it("allows re-inviting an email once its earlier invite has expired", async () => {
+    const email = `reinvite-${inviteeEmail}`;
+    const first = await app.inject({
+      method: "POST",
+      url: "/invites",
+      headers: { cookie: ownerCookie, ...CSRF_HEADERS },
+      payload: { email },
+    });
+    expect(first.statusCode).toBe(201);
+
+    await prisma.invite.update({
+      where: { token: first.json().token },
+      data: { expiresAt: new Date(Date.now() - 1000) },
+    });
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/invites",
+      headers: { cookie: ownerCookie, ...CSRF_HEADERS },
+      payload: { email },
+    });
+    expect(second.statusCode).toBe(201);
+  });
 });
