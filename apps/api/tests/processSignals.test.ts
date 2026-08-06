@@ -4,7 +4,12 @@ import { PrismaClient } from "@prisma/client";
 import { createSignalWorker, signalQueue } from "../src/workers/processSignals.js";
 import { regradeQueue } from "../src/workers/regradeWorker.js";
 
-const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null });
+// createSignalWorker listens on the hardcoded "process-signals" BullMQ queue name — every test
+// file that spins one up shares that same queue in the same real Redis instance. Without a
+// dedicated logical DB per file, vitest running these files concurrently lets one file's worker
+// steal and process a job another file added, using the wrong (or no) LLM mock. A unique `db`
+// index per file gives each one a fully isolated Redis key space, closing that race.
+const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null, db: 1 });
 const prisma = new PrismaClient();
 
 const runId = Math.random().toString(36).slice(2);

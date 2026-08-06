@@ -14,7 +14,12 @@ vi.mock("../src/llm/index.js", () => ({
 const { createSignalWorker, signalQueue } = await import("../src/workers/processSignals.js");
 const { regradeQueue } = await import("../src/workers/regradeWorker.js");
 
-const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null });
+// createSignalWorker listens on the hardcoded "process-signals" BullMQ queue name — every test
+// file that spins one up shares that same queue in the same real Redis instance. Without a
+// dedicated logical DB per file, vitest running these files concurrently lets one file's worker
+// steal and process a job another file added, using the wrong (or no) LLM mock. A unique `db`
+// index per file gives each one a fully isolated Redis key space, closing that race.
+const redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null, db: 2 });
 const prisma = new PrismaClient();
 
 const runId = Math.random().toString(36).slice(2);
@@ -23,6 +28,14 @@ const batchId = `llm-failure-test-batch-${runId}`;
 const workUnitId = `llm-failure-test-unit-${runId}`;
 
 let worker: ReturnType<typeof createSignalWorker>;
+
+// The worker's job handler runs two sequential async loops (see processSignals.ts) — the first
+// loop's DB writes (which is all a `verdict` row's existence proves) complete well before the
+// second, LLM-backed spot-check loop that this test actually exercises does. Waiting on that
+// intermediate DB state instead of the job's real completion is a race: it can read a consistent
+// snapshot before the second loop has run at all, especially on a slower CI runner. Waiting for
+// the worker's own "completed" event is what actually guarantees the whole handler has returned.
+let jobCompleted = false;
 
 beforeAll(async () => {
   llmCallMock.mockRejectedValue(new Error("fetch failed: connect ECONNREFUSED 127.0.0.1:11434"));
@@ -47,6 +60,9 @@ beforeAll(async () => {
   });
 
   worker = createSignalWorker(prisma, redis, regradeQueue(redis));
+  worker.on("completed", () => {
+    jobCompleted = true;
+  });
   await worker.waitUntilReady();
   await signalQueue(redis).add("process-signals", { batchId, tenantId });
 });
@@ -74,8 +90,10 @@ async function pollUntil<T>(fn: () => Promise<T | null>, timeoutMs = 10000): Pro
 
 describe("processSignals worker — consistency spot-check LLM failure", () => {
   it("completes the batch instead of aborting when the LLM backend is unreachable", async () => {
-    const verdict = await pollUntil(() => prisma.verdict.findUnique({ where: { workUnitId } }));
-    expect(verdict.recommendation).toBeTruthy();
+    await pollUntil(async () => (jobCompleted ? true : null));
+
+    const verdict = await prisma.verdict.findUnique({ where: { workUnitId } });
+    expect(verdict?.recommendation).toBeTruthy();
 
     expect(llmCallMock).toHaveBeenCalled();
 
