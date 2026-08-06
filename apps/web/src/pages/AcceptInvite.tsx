@@ -42,12 +42,13 @@ export function AcceptInvite() {
               type="password"
               required
               minLength={8}
+              maxLength={72}
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full px-3 py-2 rounded-md border border-gray-300 text-sm transition-colors duration-150 ease-out focus:border-quorum-400"
             />
-            <p className="mt-1 text-xs text-gray-400">At least 8 characters.</p>
+            <p className="mt-1 text-xs text-gray-400">8-72 characters.</p>
           </div>
 
           {error && <p className="animate-fade-up text-sm text-red-600">{error}</p>}
