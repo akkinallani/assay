@@ -42,16 +42,20 @@ function sampleUpTo<T>(arr: T[], n: number): T[] {
 // whole domain's stats. A single INSERT ... ON CONFLICT DO UPDATE is atomic per row in Postgres,
 // closing the race — itemsSeen/flagCount already used Prisma's atomic `{ increment }` on the
 // non-JSON fields; this brings domainStats to the same guarantee.
-export async function upsertGraderDomainStat(
+// Returns the raw-query promise rather than awaiting it internally so callers can fold it into
+// the same $transaction([...]) array as the unit's Signal/Verdict writes (see createSignalWorker
+// below) — that atomicity is what lets a retried job tell "already fully processed" from "not
+// processed" by checking Verdict existence alone, instead of double-counting on retry.
+export function upsertGraderDomainStat(
   prisma: PrismaClient,
   tenantId: string,
   graderId: string,
   domain: string,
   fired: boolean
-): Promise<void> {
+) {
   const id = randomUUID();
   const flagIncrement = fired ? 1 : 0;
-  await prisma.$executeRaw`
+  return prisma.$executeRaw`
     INSERT INTO "GraderStat" ("id", "tenantId", "graderId", "itemsSeen", "flagCount", "agreementCount", "regradeCount", "domainStats", "updatedAt")
     VALUES (${id}, ${tenantId}, ${graderId}, 1, ${flagIncrement}, 0, 0, jsonb_build_object(${domain}, jsonb_build_object('itemsSeen', 1, 'flagCount', ${flagIncrement})), now())
     ON CONFLICT ("tenantId", "graderId") DO UPDATE SET
@@ -75,6 +79,26 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
     "process-signals",
     async (job) => {
       const { batchId, tenantId } = job.data as { batchId: string; tenantId: string };
+
+      // This job now retries on failure (see `{ attempts: 3 }` where it's enqueued in
+      // batches.ts) so a transient Postgres/Redis blip doesn't strand the batch at "pending"
+      // forever. A retry re-invokes this handler from the top, so any unit whose Signal/Verdict/
+      // GraderStat writes already committed in an earlier attempt (job.attemptsMade > 0) must be
+      // recognized and skipped, not redone — GraderStat's per-unit counters are `+1` increments,
+      // not idempotent overwrites, so reprocessing an already-counted unit would double-count it.
+      const alreadyProcessed = new Map<string, { risk: number; consistencyFired: boolean }>();
+      if (job.attemptsMade > 0) {
+        const existingVerdicts = await prisma.verdict.findMany({
+          where: { workUnit: { batchId, tenantId } },
+          include: { workUnit: { include: { signals: { where: { key: "consistency" } } } } },
+        });
+        for (const v of existingVerdicts) {
+          alreadyProcessed.set(v.workUnitId, {
+            risk: v.risk,
+            consistencyFired: v.workUnit.signals[0]?.fired ?? false,
+          });
+        }
+      }
 
       const dbUnits = await prisma.workUnit.findMany({
         where: { batchId, tenantId },
@@ -100,6 +124,16 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
       const queuedForRegrade = new Set<string>();
 
       for (const unit of units) {
+        const already = alreadyProcessed.get(unit.id);
+        if (already) {
+          if (!already.consistencyFired) consistencyClearUnits.push(unit);
+          if (already.risk >= 0.4 && !queuedForRegrade.has(unit.id)) {
+            await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
+            queuedForRegrade.add(unit.id);
+          }
+          continue;
+        }
+
         const signals = [
           consistencySignal(unit, ctx),
           coverageSignal(unit, ctx),
@@ -111,6 +145,7 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
         }
 
         const verdict = buildVerdict(unit.id, signals);
+        const anyFired = signals.some((s) => s.fired);
 
         await prisma.$transaction([
           prisma.signal.deleteMany({ where: { workUnitId: unit.id } }),
@@ -138,11 +173,8 @@ export function createSignalWorker(prisma: PrismaClient, redis: Redis, regradeQu
               recommendation: verdict.recommendation,
             },
           }),
+          upsertGraderDomainStat(prisma, unit.tenantId, unit.graderId, unit.domain, anyFired),
         ]);
-
-        const anyFired = signals.some((s) => s.fired);
-
-        await upsertGraderDomainStat(prisma, unit.tenantId, unit.graderId, unit.domain, anyFired);
 
         if (verdict.risk >= 0.4) {
           await regradeQueue.add("regrade-item", { workUnitId: unit.id, batchId }, { attempts: 3 });
