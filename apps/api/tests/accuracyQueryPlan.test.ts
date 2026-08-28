@@ -50,7 +50,12 @@ describe("GET /accuracy — firedSignals query plan", () => {
     });
 
     expect(planText).toContain("WorkUnit_tenantId_batchId_idx");
-    expect(planText).toContain("Verdict_tenantId_idx");
+    // Not asserting Verdict uses its tenantId index specifically: Verdict.workUnitId is @unique,
+    // so Postgres's cost-based planner can legitimately prefer that unique index for the join
+    // (at most one matching row, cheaper than a non-unique index scan) and apply tenantId as a
+    // plain filter instead — confirmed deterministic locally (same plan across repeated runs),
+    // not a one-off flake. Either choice avoids the full scan this fix actually targets, which
+    // is what the two assertions below guard.
     expect(planText).not.toContain('Seq Scan on "WorkUnit"');
     expect(planText).not.toContain('Seq Scan on "Verdict"');
   });
