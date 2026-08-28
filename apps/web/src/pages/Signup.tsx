@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
-import { ApiError } from "../api/client.js";
+import { formatApiErrorMessage } from "../api/client.js";
 import { GoogleIcon } from "../components/GoogleIcon.js";
 
 export function Signup() {
@@ -21,7 +21,7 @@ export function Signup() {
       await signup(email, password, tenantName);
       navigate("/app");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong");
+      setError(formatApiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
