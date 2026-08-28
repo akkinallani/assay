@@ -87,6 +87,7 @@ model WorkUnit {
   verdict Verdict?
 
   @@index([tenantId, batchId])
+  @@index([batchId])
   @@index([graderId])
 }
 
