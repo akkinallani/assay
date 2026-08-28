@@ -7,10 +7,28 @@ import { resolveGoogleUser, GoogleAuthError } from "../lib/googleAuth.js";
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:3000";
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:5173";
 
+// Node's fetch() has no default timeout (undici's own internal ceiling is 300s), so a slow or
+// hung response from Google here would otherwise leave the callback request — and the user's
+// browser tab mid-redirect from Google — hanging for minutes with no feedback. Bounded well
+// above this endpoint's normal sub-second latency so it never fires under real network variance.
+const GOOGLE_USERINFO_TIMEOUT_MS = 10_000;
+
 interface GoogleUserinfo {
   sub: string;
   email: string;
   email_verified: boolean;
+}
+
+// Exported so the timeout behavior can be tested directly, without standing up a full OAuth2
+// authorization-code flow (this app has no test coverage for that — GOOGLE_CLIENT_ID/SECRET are
+// unset in the test env by design, so the plugin never registers its routes there at all).
+export async function fetchGoogleUserinfo(accessToken: string): Promise<GoogleUserinfo> {
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(GOOGLE_USERINFO_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`Google userinfo request failed: ${response.status}`);
+  return (await response.json()) as GoogleUserinfo;
 }
 
 // Registers the OAuth2 flow and its callback only when credentials are actually configured —
@@ -47,11 +65,7 @@ const googleOAuthPlugin: FastifyPluginAsync = fp(async (fastify) => {
     try {
       const { token } = await fastify.oauth2Google!.getAccessTokenFromAuthorizationCodeFlow(request);
 
-      const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: `Bearer ${token.access_token}` },
-      });
-      if (!response.ok) throw new Error(`Google userinfo request failed: ${response.status}`);
-      const profile = (await response.json()) as GoogleUserinfo;
+      const profile = await fetchGoogleUserinfo(token.access_token);
 
       const user = await resolveGoogleUser(fastify.prisma, {
         googleId: profile.sub,
