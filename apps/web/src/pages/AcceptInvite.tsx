@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.js";
-import { ApiError } from "../api/client.js";
+import { formatApiErrorMessage } from "../api/client.js";
 
 export function AcceptInvite() {
   const { token } = useParams<{ token: string }>();
@@ -20,7 +20,7 @@ export function AcceptInvite() {
       await acceptInvite(token, password);
       navigate("/app");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong");
+      setError(formatApiErrorMessage(err));
     } finally {
       setSubmitting(false);
     }

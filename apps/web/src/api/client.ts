@@ -94,6 +94,22 @@ export class ApiError extends Error {
   }
 }
 
+// The server's per-field zod errors (e.g. "Password must be at most 72 bytes") are far more
+// actionable than the generic top-level "Validation failed" message above them — every zod
+// .refine()/.min()/.max() bound (a password over the byte cap, a too-long org name, ...) is
+// otherwise invisible to the user, who just sees "Validation failed" with no indication why.
+export function formatApiErrorMessage(err: unknown): string {
+  if (err instanceof ApiError && err.code === "validation_failed" && Array.isArray(err.issues)) {
+    return err.issues
+      .map((issue) => {
+        const { path, message } = issue as { path?: unknown; message?: string };
+        return Array.isArray(path) && path.length > 0 ? `${path.join(".")}: ${message}` : (message ?? "Validation failed");
+      })
+      .join(" ");
+  }
+  return err instanceof ApiError ? err.message : "Something went wrong";
+}
+
 // Lets AuthContext know a request came back 401'd (session expired/invalidated
 // server-side) so it can clear the stale `user` state and let RequireAuth redirect
 // to /login — every page's own error handling only shows the failure inline, with
