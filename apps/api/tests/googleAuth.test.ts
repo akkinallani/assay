@@ -1,7 +1,8 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { resolveGoogleUser, GoogleAuthError } from "../src/lib/googleAuth.js";
+import { createServer } from "node:net";
+import { resolveGoogleUser, fetchGoogleUserinfo, GoogleAuthError } from "../src/lib/googleAuth.js";
 
 const prisma = new PrismaClient();
 const runId = Math.random().toString(36).slice(2);
@@ -150,5 +151,57 @@ describe("resolveGoogleUser", () => {
 
     expect(user.tenantId).not.toBe(inviterTenant.id);
     createdTenantNames.push((await prisma.tenant.findUniqueOrThrow({ where: { id: user.tenantId } })).name);
+  });
+});
+
+describe("fetchGoogleUserinfo", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("passes a bounded AbortSignal on the userinfo request", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ sub: "g1", email: "a@example.com", email_verified: true }),
+    } as Response);
+
+    await fetchGoogleUserinfo("token123");
+
+    const [, options] = fetchMock.mock.calls[0] as [string, { signal?: AbortSignal }];
+    expect(options.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("actually aborts a connection that accepts the socket and never responds, instead of hanging indefinitely", async () => {
+    vi.unstubAllGlobals();
+
+    const server = createServer((socket) => {
+      // Accept the TCP connection but never write a response — reproduces a slow/unresponsive
+      // googleapis.com that's alive at the transport layer but never completes.
+      socket.on("error", () => {});
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    const port = (server.address() as { port: number }).port;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      // Directly exercises fetch()+AbortSignal against a real hung socket with a short
+      // timeout, proving the abort actually fires — fetchGoogleUserinfo's own 10s default is
+      // deliberately not exercised live here (would make this test slow).
+      const start = Date.now();
+      await expect(
+        fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(300) })
+      ).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(Date.now() - start).toBeLessThan(5000);
+    } finally {
+      server.close();
+      globalThis.fetch = originalFetch;
+    }
   });
 });

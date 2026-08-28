@@ -8,6 +8,32 @@ export interface GoogleProfile {
   emailVerified: boolean;
 }
 
+export interface GoogleUserinfo {
+  sub: string;
+  email: string;
+  email_verified: boolean;
+}
+
+// Bounds a slow/unresponsive googleapis.com — without this, Node's fetch() falls back to
+// undici's ~5 minute default headers/body timeout, leaving the user's OAuth callback tab
+// hanging with zero feedback before the existing catch block's redirect-to-login recovers.
+const GOOGLE_USERINFO_TIMEOUT_MS = 10_000;
+
+/**
+ * Fetches the verified Google profile for an access token. Isolated from the OAuth2 plugin
+ * plumbing (same reasoning as resolveGoogleUser below) so it's directly testable.
+ */
+export async function fetchGoogleUserinfo(accessToken: string): Promise<GoogleUserinfo> {
+  const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(GOOGLE_USERINFO_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`Google userinfo request failed: ${response.status}`);
+  }
+  return (await response.json()) as GoogleUserinfo;
+}
+
 function tenantNameFromEmail(email: string): string {
   const local = email.split("@")[0] || "New";
   const capitalized = local.charAt(0).toUpperCase() + local.slice(1);

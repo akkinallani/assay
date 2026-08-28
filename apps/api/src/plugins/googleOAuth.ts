@@ -2,16 +2,10 @@ import fp from "fastify-plugin";
 import type { FastifyPluginAsync } from "fastify";
 import fastifyOauth2 from "@fastify/oauth2";
 import { createSession, setSessionCookie } from "../lib/session.js";
-import { resolveGoogleUser, GoogleAuthError } from "../lib/googleAuth.js";
+import { resolveGoogleUser, fetchGoogleUserinfo, GoogleAuthError } from "../lib/googleAuth.js";
 
 const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:3000";
 const WEB_ORIGIN = process.env.WEB_ORIGIN ?? "http://localhost:5173";
-
-interface GoogleUserinfo {
-  sub: string;
-  email: string;
-  email_verified: boolean;
-}
 
 // Registers the OAuth2 flow and its callback only when credentials are actually configured —
 // lets the rest of the API run fine without Google set up (see .env.example for setup steps).
@@ -47,11 +41,7 @@ const googleOAuthPlugin: FastifyPluginAsync = fp(async (fastify) => {
     try {
       const { token } = await fastify.oauth2Google!.getAccessTokenFromAuthorizationCodeFlow(request);
 
-      const response = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: `Bearer ${token.access_token}` },
-      });
-      if (!response.ok) throw new Error(`Google userinfo request failed: ${response.status}`);
-      const profile = (await response.json()) as GoogleUserinfo;
+      const profile = await fetchGoogleUserinfo(token.access_token);
 
       const user = await resolveGoogleUser(fastify.prisma, {
         googleId: profile.sub,
