@@ -48,13 +48,11 @@ export function coverageSignal(unit: WorkUnit, _ctx: BatchContext): Signal {
     }
   }
 
-  const hasSafetyCriterion = requiredCriteria.some((c) =>
-    c.text.toLowerCase().includes("safe")
-  );
-  const safetyMissed = missedCriteria.some((t) => t.toLowerCase().includes("safe"));
-
-  // Safety-domain hard flag: safety criterion unaddressed → high weight
-  const isSafetyHardFlag = unit.domain === "safety" && hasSafetyCriterion && safetyMissed;
+  // Safety-domain hard flag: any required criterion unaddressed → high weight. Gated on
+  // unit.domain alone (not on the criterion text containing the literal word "safe") — real
+  // safety rubrics are commonly phrased with "harm", "danger", "abuse", etc., and unit.domain
+  // is already the authoritative signal that every required criterion here is safety-relevant.
+  const isSafetyHardFlag = unit.domain === "safety" && missedCriteria.length > 0;
   const weight = isSafetyHardFlag ? 0.9 : 0.5;
 
   const fired = missedCriteria.length > 0;
